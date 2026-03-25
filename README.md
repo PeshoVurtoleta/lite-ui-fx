@@ -224,7 +224,6 @@ Full TypeScript declarations are included for:
 
 (Recipes are not part of the npm package, so their types are not included.)
 
-```
 
 ## 📚 LLM-Friendly Documentation
 
