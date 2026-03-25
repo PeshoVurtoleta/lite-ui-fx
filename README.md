@@ -45,11 +45,11 @@ All visual effects live in the GitHub repo as **recipes**.
 
 📁 **Recipe Collections:**  
 - Vol. 1 (10 recipes):  
-  https://github.com/PeshoVurtoleta/lite-ui-fx/blob/main/UIFXRecipes.js  
+  https://github.com/PeshoVurtoleta/lite-ui-fx/blob/main/recipes/UIFXRecipes.js  
 - Vol. 2 (20 recipes):  
-  https://github.com/PeshoVurtoleta/lite-ui-fx/blob/main/UIFXRecipes2.js  
+  https://github.com/PeshoVurtoleta/lite-ui-fx/blob/main/recipes/UIFXRecipes2.js  
 - Vol. 3 (20 recipes):  
-  https://github.com/PeshoVurtoleta/lite-ui-fx/blob/main/UIFXRecipes3.js  
+  https://github.com/PeshoVurtoleta/lite-ui-fx/blob/main/recipes/UIFXRecipes3.js  
 
 📘 **How to write your own:**  
 https://github.com/PeshoVurtoleta/lite-ui-fx/blob/main/UIFX-RECIPE-GUIDE.md
@@ -184,7 +184,7 @@ Returns `{ el, canvas, wrapper, state, destroy() }`.
 | Framer Motion | ~45 KB | React HOC | 0 | Via React | `npm i framer-motion` |
 | GSAP | ~25 KB | Timeline | 0 | Manual | `npm i gsap` |
 | Lottie | ~55 KB | JSON animation | After Effects | Manual | `npm i lottie-web` |
-| **lite-ui-fx** | **< 5 KB** | **Canvas hijack** | **30 built-in** | **Native + visual** | **`npm i @zakkster/lite-ui-fx`** |
+| **lite-ui-fx** | **< 5 KB** | **Canvas hijack** | *50 built-in** | **Native + visual** | **`npm i @zakkster/lite-ui-fx`** |
 
 ## 🎨 Writing Custom Recipes
 
@@ -214,13 +214,16 @@ export function MyButton() {
 
 ## 📦 TypeScript
 
-Full declarations for controller, all 3 recipe volumes, and shared interfaces:
+Full TypeScript declarations are included for:
 
-```
-UIFXController.d.ts    — mountUIFX, UIType, UIFXState, UIFXPointer, UIFXRecipe
-UIFXRecipes.d.ts       — 10 recipe factories (Vol. 1)
-UIFXRecipes2.d.ts      — 20 recipe factories (Vol. 2)
-UIFXRecipes3.d.ts      — 20 recipe factories (Vol. 3)
+- `mountUIFX`
+- `UIType`
+- `UIFXState`
+- `UIFXPointer`
+- `UIFXRecipe`
+
+(Recipes are not part of the npm package, so their types are not included.)
+
 ```
 
 ## 📚 LLM-Friendly Documentation
