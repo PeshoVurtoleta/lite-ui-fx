@@ -1,0 +1,69 @@
+# @zakkster/lite-ui-fx
+> Canvas-hijacked UI components with pluggable recipe system. 30 built-in recipes.
+
+## Install
+npm i @zakkster/lite-ui-fx
+
+## Core Concept
+Native HTML element (opacity:0, z-index:2) handles events + a11y.
+Canvas overlay (z-index:1) renders visuals via a recipe factory function.
+Recipe = { tick(), init?(), onHover?(), onClick?(), onToggle?(), onDrag?(), destroy?() }
+
+## Import — Controller
+import { mountUIFX, UIType } from '@zakkster/lite-ui-fx';
+
+## Import — Recipes (3 volumes, 30 total)
+import { SwarmToggle, MagneticButton, SparkSlider } from ./recipes/UIFXRecipes.js';
+import { PendulumToggle, HeartbeatButton, AuroraSlider } from './recipes/UIFXRecipes2.js';
+import { VolumeKnob, WaterLevel, TimerCountdown } from './recipes/UIFXRecipes3.js';
+
+## Mount
+const instance = mountUIFX(container, UIType.TOGGLE, SwarmToggle, { label: 'Sound' });
+instance.destroy(); // cleanup
+
+## Element Types
+UIType.TOGGLE → <input type="checkbox" role="switch"> → state.toggled, onToggle(checked)
+UIType.BUTTON → <button> → state.active, onClick(x, y, state)
+UIType.SLIDER → <input type="range"> → state.val (0–1), onDrag(val, velocity)
+
+## State Object (provided to tick every frame)
+{ hover, active, focused, toggled, val, w, h, padding, dpr }
+
+## 30 Built-in Recipes
+
+### Vol. 1 (UIFXRecipes.js) — 10 recipes
+Toggles: SwarmToggle, LiquidToggle, NeonPulseToggle
+Buttons: MagneticButton, ShatterButton, ConfettiButton, GlitchButton
+Sliders: SparkSlider, CosmicSlider, LaserSlider
+
+### Vol. 2 (UIFXRecipes2.js) — 20 recipes
+Toggles: PendulumToggle, CircuitToggle, LightningToggle, DNAToggle
+Buttons: HeartbeatButton, BreathingButton, InkSplashButton, PixelDissolveButton, FireworkButton
+Sliders: AuroraSlider, WaveSlider, ElasticBandSlider, GravitySlider
+Loaders: OrbitLoader, HelixLoader
+Checkboxes: RippleCheck, MorphCheck
+Counters: FlameCounter, GlitchCounter
+Rating: BubbleRating
+
+### Vol. 3 (UIFXRecipes3.js) — 20 recipes
+Knobs: VolumeKnob, CompassKnob
+Progress: RingProgress, BatteryGauge, SignalMeter
+Controls: PillTabs, Stepper, RadioOrbit
+Indicators: PasswordStrength, WaterLevel, HeatMap
+Mood: DayNightToggle, ReactionPicker, NotificationBell
+Feedback: TypewriterField, SoundWaveBtn, UploadProgress
+Fun: ScratchReveal, TimerCountdown, PullRefresh
+
+## Writing Custom Recipes
+See UIFX-RECIPE-GUIDE.md (included in package).
+
+## Dependencies
+@zakkster/lite-ticker, @zakkster/lite-lerp, @zakkster/lite-random
+
+## Key Facts
+- DPR-aware canvas (retina sharp)
+- AbortController cleanup on destroy
+- Ref-counted shared Ticker (one RAF for all components)
+- Safari-safe roundRect polyfill in recipes
+- Accessibility: role=switch, aria-label, keyboard focus tracking
+- Zero-GC in all built-in recipes (TypedArrays, seeded RNG)

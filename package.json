@@ -1,0 +1,56 @@
+{
+  "name": "@zakkster/lite-ui-fx",
+  "version": "1.0.0",
+  "description": "Canvas-hijacked UI components with a pluggable recipe system. 30 built-in recipes across toggles, buttons, sliders, knobs, loaders, checkboxes, counters, and ratings.",
+  "author": "Zahary Shinikchiev <shinikchiev@yahoo.com>",
+  "license": "MIT",
+  "type": "module",
+  "main": "UIFXController.js",
+  "types": "UIFXController.d.ts",
+  "exports": {
+    ".": {
+      "import": "./UIFXController.js",
+      "types": "./UIFXController.d.ts"
+    }
+  },
+  "files": [
+    "UIFXController.js",
+    "UIFXController.d.ts",
+    "llms.txt"
+  ],
+  "keywords": [
+    "ui",
+    "canvas",
+    "microinteraction",
+    "toggle",
+    "button",
+    "slider",
+    "knob",
+    "recipe",
+    "animation",
+    "zero-gc",
+    "game",
+    "a11y"
+  ],
+  "sideEffects": false,
+  "dependencies": {
+    "@zakkster/lite-ticker": "^1.0.0",
+    "@zakkster/lite-lerp": "^1.0.0",
+    "@zakkster/lite-random": "^1.0.0"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "homepage": "https://github.com/PeshoVurtoleta/lite-ui-fx#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PeshoVurtoleta/lite-ui-fx.git"
+  },
+  "bugs": {
+    "url": "https://github.com/PeshoVurtoleta/lite-ui-fx/issues",
+    "email": "shinikchiev@yahoo.com"
+  }
+}
