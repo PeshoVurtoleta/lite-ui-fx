@@ -352,7 +352,7 @@ export function FireworkButton({ seed = 42 } = {}) {
             ctx.save(); ctx.translate(st.w / 2, st.h / 2); ctx.scale(pressScale, pressScale); ctx.translate(-st.w / 2, -st.h / 2);
             ctx.fillStyle = 'rgba(255,255,255,.06)'; roundRect(ctx, 0, 0, st.w, st.h, 10); ctx.fill();
             ctx.fillStyle = '#fbbf24'; ctx.font = "600 13px 'Space Grotesk',sans-serif"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText('* FIRE', st.w / 2, st.h / 2);
+            ctx.fillText('\u{1F386} FIRE', st.w / 2, st.h / 2);
             ctx.restore();
 
             // Rockets
@@ -586,7 +586,7 @@ export function RippleCheck() {
                 if (p2 > 0) ctx.lineTo(cx + 14 * p2, cy + 7 - 14 * p2);
                 ctx.stroke(); ctx.lineCap = 'butt';
             }
-            label(ctx, st.toggled ? 'v' : 'o', sz / 2, sz + 12, st.toggled ? '#6ee7b6' : '#8888aa');
+            label(ctx, st.toggled ? '\u2713' : '\u25CB', sz / 2, sz + 12, st.toggled ? '#6ee7b6' : '#8888aa');
             if (st.focused) focusRing(ctx, sz, sz, 6);
         },
     };
@@ -626,7 +626,7 @@ export function MorphCheck() {
             ctx.stroke();
             ctx.lineCap = 'butt';
 
-            label(ctx, st.toggled ? 'v' : 'x', sz / 2, sz + 12, st.toggled ? '#38bdf8' : '#8888aa');
+            label(ctx, st.toggled ? '\u2713' : '\u2715', sz / 2, sz + 12, st.toggled ? '#38bdf8' : '#8888aa');
             if (st.focused) focusRing(ctx, sz, sz, 6);
         },
     };
