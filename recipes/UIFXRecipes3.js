@@ -1,5 +1,5 @@
 /**
- * @zakkster/lite-ui-fx — Recipe Collection Vol. 3
+ * @zakkster/lite-ui-fx -- Recipe Collection Vol. 3
  *
  * 20 recipes across novel UI element categories:
  *   Knobs (2):   VolumeKnob, CompassKnob
@@ -16,18 +16,18 @@
 import { lerp, clamp, easeOut, easeIn } from '@zakkster/lite-lerp';
 import { Random } from '@zakkster/lite-random';
 
-// ── Shared ──
+// -- Shared --
 function rr(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.lineTo(x+w-r,y);c.arcTo(x+w,y,x+w,y+r,r);c.lineTo(x+w,y+h-r);c.arcTo(x+w,y+h,x+w-r,y+h,r);c.lineTo(x+r,y+h);c.arcTo(x,y+h,x,y+h-r,r);c.lineTo(x,y+r);c.arcTo(x,y,x+r,y,r);c.closePath()}
 function lbl(c,t,x,y,col='#9999b8'){c.fillStyle=col;c.font="500 9px 'JetBrains Mono',monospace";c.textAlign='center';c.fillText(t,x,y)}
 function fr(c,w,h,r){c.strokeStyle='rgba(110,231,182,.5)';c.lineWidth=2;c.setLineDash([4,3]);rr(c,-2,-2,w+4,h+4,r+2);c.stroke();c.setLineDash([])}
 const PI2=Math.PI*2;
 
 
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 //  KNOBS
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 
-/** 1. Volume Knob — Rotary dial with tick marks and arc indicator. */
+/** 1. Volume Knob -- Rotary dial with tick marks and arc indicator. */
 export function VolumeKnob() {
     let displayVal = 0;
     return {
@@ -75,7 +75,7 @@ export function VolumeKnob() {
     };
 }
 
-/** 2. Compass Knob — Needle points based on slider value (0=N, 0.5=S, 1=N). */
+/** 2. Compass Knob -- Needle points based on slider value (0=N, 0.5=S, 1=N). */
 export function CompassKnob() {
     let needleA=0;
     return {
@@ -108,18 +108,18 @@ export function CompassKnob() {
             c.fillStyle='#333'; c.beginPath(); c.arc(cx,cy,4,0,PI2); c.fill();
             c.strokeStyle='rgba(255,255,255,.1)'; c.lineWidth=1; c.beginPath(); c.arc(cx,cy,4,0,PI2); c.stroke();
 
-            lbl(c,Math.round(st.val*360)+'°',cx,st.h+10);
+            lbl(c,Math.round(st.val*360)+'\u00B0',cx,st.h+10);
             if(st.focused)fr(c,st.w,st.h,st.h/2);
         },
     };
 }
 
 
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 //  PROGRESS
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 
-/** 3. Ring Progress — Circular progress with animated fill and particles at the tip. */
+/** 3. Ring Progress -- Circular progress with animated fill and particles at the tip. */
 export function RingProgress({seed=42}={}) {
     const rng=new Random(seed);
     let displayVal=0, sparks=[];
@@ -158,7 +158,7 @@ export function RingProgress({seed=42}={}) {
     };
 }
 
-/** 4. Battery Gauge — Battery icon that fills and changes color. */
+/** 4. Battery Gauge -- Battery icon that fills and changes color. */
 export function BatteryGauge() {
     let displayVal=0;
     return {
@@ -199,7 +199,7 @@ export function BatteryGauge() {
     };
 }
 
-/** 5. Signal Meter — WiFi-style signal bars. */
+/** 5. Signal Meter -- WiFi-style signal bars. */
 export function SignalMeter() {
     let bars=[0,0,0,0,0];
     return {
@@ -226,11 +226,11 @@ export function SignalMeter() {
 }
 
 
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 //  CONTROLS
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 
-/** 6. Pill Tabs — 3 segmented tabs with sliding indicator. */
+/** 6. Pill Tabs -- 3 segmented tabs with sliding indicator. */
 export function PillTabs() {
     let indicatorX=0, indicatorW=0, selected=0;
     const labels=['Alpha','Beta','Gamma'];
@@ -263,7 +263,7 @@ export function PillTabs() {
     };
 }
 
-/** 7. Stepper — +/- buttons with spring counter. */
+/** 7. Stepper -- +/- buttons with spring counter. */
 export function Stepper() {
     let count=0,displayCount=0,flashDir=0,flashTimer=0;
     return {
@@ -284,7 +284,7 @@ export function Stepper() {
             c.fillStyle=flashDir===-1&&flashTimer>0?'rgba(255,100,100,.15)':'rgba(255,255,255,.03)';
             rr(c,2,2,third-4,st.h-4,8);c.fill();
             c.fillStyle='#ff6b6b';c.font="700 18px 'JetBrains Mono',monospace";c.textAlign='center';c.textBaseline='middle';
-            c.fillText('−',third/2,st.h/2);
+            c.fillText('\u2212',third/2,st.h/2);
 
             // Plus zone
             c.fillStyle=flashDir===1&&flashTimer>0?'rgba(110,231,182,.15)':'rgba(255,255,255,.03)';
@@ -300,7 +300,7 @@ export function Stepper() {
     };
 }
 
-/** 8. Radio Orbit — 4 options arranged in a circle. Slider picks one. */
+/** 8. Radio Orbit -- 4 options arranged in a circle. Slider picks one. */
 export function RadioOrbit() {
     let selectedGlow=new Float32Array(4);
     const names=['A','B','C','D'],colors=['#ff6b6b','#fbbf24','#6ee7b6','#38bdf8'];
@@ -338,11 +338,11 @@ export function RadioOrbit() {
 }
 
 
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 //  INDICATORS
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 
-/** 9. Password Strength — Segmented bar with color progression and label. */
+/** 9. Password Strength -- Segmented bar with color progression and label. */
 export function PasswordStrength() {
     let segs=[0,0,0,0];
     const labels=['WEAK','FAIR','GOOD','STRONG'],colors=['#ff6b6b','#fbbf24','#38bdf8','#6ee7b6'];
@@ -370,7 +370,7 @@ export function PasswordStrength() {
     };
 }
 
-/** 10. Water Level — Animated wave surface inside a container. */
+/** 10. Water Level -- Animated wave surface inside a container. */
 export function WaterLevel() {
     let displayVal=0, wavePhase=0;
     return {
@@ -408,7 +408,7 @@ export function WaterLevel() {
     };
 }
 
-/** 11. Heat Map — 5×3 grid of cells that heat up based on slider. */
+/** 11. Heat Map -- 5×3 grid of cells that heat up based on slider. */
 export function HeatMap({seed=42}={}) {
     const rng=new Random(seed);
     const N=15,thresholds=new Float32Array(N);
@@ -436,11 +436,11 @@ export function HeatMap({seed=42}={}) {
 }
 
 
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 //  MOOD
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 
-/** 12. Day/Night Toggle — Sun/moon transition with star particles. */
+/** 12. Day/Night Toggle -- Sun/moon transition with star particles. */
 export function DayNightToggle({seed=42}={}) {
     const rng=new Random(seed);
     let t=0, stars=[];
@@ -485,10 +485,10 @@ export function DayNightToggle({seed=42}={}) {
     };
 }
 
-/** 13. Reaction Picker — 5 emoji-style circles that inflate on hover region. */
+/** 13. Reaction Picker -- 5 emoji-style circles that inflate on hover region. */
 export function ReactionPicker() {
     let sizes=new Float32Array(5), selected=-1;
-    const emojis=['😐','🙂','😊','😄','🤩'],colors=['#9999b8','#fbbf24','#fb923c','#f472b6','#ff6b6b'];
+    const emojis=['\u{1F610}','\u{1F642}','\u{1F60A}','\u{1F604}','\u{1F929}'],colors=['#9999b8','#fbbf24','#fb923c','#f472b6','#ff6b6b'];
     return {
         tick(c,dt,now,st,ptr) {
             const gap=st.w/5;
@@ -521,7 +521,7 @@ export function ReactionPicker() {
     };
 }
 
-/** 14. Notification Bell — Bell icon with bounce and count badge. */
+/** 14. Notification Bell -- Bell icon with bounce and count badge. */
 export function NotificationBell() {
     let count=0, bellAngle=0, bellVel=0, badgeScale=0;
     return {
@@ -558,11 +558,11 @@ export function NotificationBell() {
 }
 
 
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 //  FEEDBACK
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 
-/** 15. Typewriter Field — Characters appear one by one with cursor blink. */
+/** 15. Typewriter Field -- Characters appear one by one with cursor blink. */
 export function TypewriterField() {
     const text='Hello World';
     let charIdx=0, timer=0, cursorBlink=0, typing=false;
@@ -591,7 +591,7 @@ export function TypewriterField() {
     };
 }
 
-/** 16. Sound Wave Button — Oscillating waveform on press, static on idle. */
+/** 16. Sound Wave Button -- Oscillating waveform on press, static on idle. */
 export function SoundWaveBtn() {
     let intensity=0, phase=0;
     return {
@@ -620,13 +620,13 @@ export function SoundWaveBtn() {
             }
 
             c.fillStyle=intensity>.1?'#f472b6':'#9999b8';c.font="600 11px 'Space Grotesk',sans-serif";c.textAlign='center';c.textBaseline='middle';
-            c.fillText(intensity>.1?'●  REC':'RECORD',st.w/2,st.h/2);
+            c.fillText(intensity>.1?'\u25CF  REC':'RECORD',st.w/2,st.h/2);
             if(st.focused)fr(c,st.w,st.h,10);
         },
     };
 }
 
-/** 17. Upload Progress — File icon fills from bottom as slider increases. */
+/** 17. Upload Progress -- File icon fills from bottom as slider increases. */
 export function UploadProgress() {
     let displayVal=0;
     return {
@@ -666,11 +666,11 @@ export function UploadProgress() {
 }
 
 
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 //  FUN
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 
-/** 18. Scratch Reveal — Drag to erase a mask and reveal the prize beneath. */
+/** 18. Scratch Reveal -- Drag to erase a mask and reveal the prize beneath. */
 export function ScratchReveal({seed=42}={}) {
     const rng=new Random(seed);
     let revealed=0, scratches=[];
@@ -687,7 +687,7 @@ export function ScratchReveal({seed=42}={}) {
 
             // Prize text (always there, hidden by mask)
             c.fillStyle=`rgba(110,231,182,${.1+revealed*.6})`;c.font="700 14px 'JetBrains Mono',monospace";c.textAlign='center';c.textBaseline='middle';
-            c.fillText(revealed>.6?'🎉 WINNER!':'? ? ?',st.w/2,st.h/2);
+            c.fillText(revealed>.6?'\u{1F389} WINNER!':'? ? ?',st.w/2,st.h/2);
 
             // Scratch mask (gets holes)
             if(revealed<.95){
@@ -712,7 +712,7 @@ export function ScratchReveal({seed=42}={}) {
     };
 }
 
-/** 19. Timer Countdown — Circular countdown timer. Toggle starts/stops. */
+/** 19. Timer Countdown -- Circular countdown timer. Toggle starts/stops. */
 export function TimerCountdown() {
     let timeLeft=10, running=false, flashAlpha=0;
     return {
@@ -746,7 +746,7 @@ export function TimerCountdown() {
     };
 }
 
-/** 20. Pull Refresh — Drag down to charge, release to spin. */
+/** 20. Pull Refresh -- Drag down to charge, release to spin. */
 export function PullRefresh() {
     let pullAmt=0, spinning=false, spinAngle=0, spinTimer=0;
     return {
@@ -792,9 +792,9 @@ export function PullRefresh() {
 }
 
 
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 //  EXPORT MAP
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 
 export const UIFXRecipes3 = {
     VolumeKnob, CompassKnob,

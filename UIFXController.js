@@ -1,28 +1,32 @@
 /**
- * @zakkster/lite-ui-fx — Canvas-Hijacked UI Components
+ * @zakkster/lite-ui-fx -- Canvas-Hijacked UI Components
  *
  * Overlays a DPR-aware canvas on top of native HTML elements (buttons,
  * checkboxes, sliders). The native element handles accessibility, focus,
  * and events. The canvas handles visuals via a pluggable recipe system.
  *
  * Architecture:
- *   Native element (opacity:0, z-index:2) — receives all pointer/keyboard events
- *   Canvas overlay (z-index:1) — renders the visual recipe
- *   Recipe factory → { init?, tick, onHover?, onLeave?, onClick?, onToggle?, onDrag?, destroy? }
+ *   Native element (opacity:0, z-index:2) -- receives all pointer/keyboard events
+ *   Canvas overlay (z-index:1) -- renders the visual recipe
+ *   Recipe factory -> { init?, tick, onHover?, onLeave?, onClick?, onToggle?, onDrag?, destroy? }
  *
  * Uses:
- *   @zakkster/lite-lerp   — interpolation in recipes
- *   @zakkster/lite-random  — deterministic particle effects
- *   @zakkster/lite-color   — OKLCH color math (optional per recipe)
+ *   @zakkster/lite-lerp   -- interpolation in recipes
+ *   @zakkster/lite-random  -- deterministic particle effects
+ *   @zakkster/lite-color   -- OKLCH color math (optional per recipe)
  *
  * Depends on: @zakkster/lite-ticker (shared RAF loop)
  */
 
 import { Ticker } from '@zakkster/lite-ticker';
 
-// ─────────────────────────────────────────────────────────
+// Three-place version sync: this constant, package.json "version", and the
+// VERSION line in llms.txt must always match. /release keeps them locked.
+export const VERSION = '1.0.5';
+
+// ---------------------------------------------------------
 //  SHARED TICKER (ref-counted, one RAF for all UI components)
-// ─────────────────────────────────────────────────────────
+// ---------------------------------------------------------
 
 let _sharedTicker = null;
 let _sharedRefs = 0;
@@ -46,9 +50,9 @@ function releaseTicker() {
 }
 
 
-// ─────────────────────────────────────────────────────────
+// ---------------------------------------------------------
 //  ELEMENT TYPES
-// ─────────────────────────────────────────────────────────
+// ---------------------------------------------------------
 
 /** @enum {string} */
 export const UIType = Object.freeze({
@@ -58,9 +62,9 @@ export const UIType = Object.freeze({
 });
 
 
-// ═══════════════════════════════════════════════════════════
-//  UIFXController — The Canvas Hijacker
-// ═══════════════════════════════════════════════════════════
+// =========================================================
+//  UIFXController -- The Canvas Hijacker
+// =========================================================
 
 /**
  * Mount a canvas-rendered recipe onto a native HTML element.
@@ -81,12 +85,12 @@ export function mountUIFX(container, type, recipeFactory, {
     padding = 40,
     label = '',
 } = {}) {
-    // ── Resolve dimensions ──
+    // -- Resolve dimensions --
     const w = width  || (type === UIType.BUTTON ? 160 : type === UIType.SLIDER ? 200 : 64);
     const h = height || (type === UIType.BUTTON ? 48  : type === UIType.SLIDER ? 28  : 36);
     const dpr = window.devicePixelRatio || 1;
 
-    // ── Create native element (invisible, accessible, receives events) ──
+    // -- Create native element (invisible, accessible, receives events) --
     let el;
     if (type === UIType.TOGGLE) {
         el = document.createElement('input');
@@ -124,7 +128,7 @@ export function mountUIFX(container, type, recipeFactory, {
         el.classList.add('uifx-slider');
     }
 
-    // ── Create canvas overlay (DPR-aware) ──
+    // -- Create canvas overlay (DPR-aware) --
     const canvas = document.createElement('canvas');
     const cw = w + padding * 2;
     const ch = h + padding * 2;
@@ -140,7 +144,7 @@ export function mountUIFX(container, type, recipeFactory, {
     const ctx = canvas.getContext('2d');
     ctx.scale(dpr, dpr);
 
-    // ── Wrapper ──
+    // -- Wrapper --
     const wrapper = document.createElement('div');
     Object.assign(wrapper.style, {
         position: 'relative', display: 'inline-block',
@@ -150,23 +154,23 @@ export function mountUIFX(container, type, recipeFactory, {
     wrapper.appendChild(canvas);
     container.appendChild(wrapper);
 
-    // ── State ──
+    // -- State --
     const state = {
         hover: false,
         active: false,      // pointer is down
         focused: false,      // keyboard focus
         toggled: false,      // checkbox state
-        val: type === UIType.SLIDER ? 0.5 : 0,  // slider value 0–1
+        val: type === UIType.SLIDER ? 0.5 : 0,  // slider value 0-1
         w, h, padding, dpr,
     };
 
     const pointer = { x: -999, y: -999, vx: 0, vy: 0 };
 
-    // ── Initialize recipe ──
+    // -- Initialize recipe --
     const recipe = recipeFactory();
     if (recipe.init) recipe.init(ctx, w, h, padding);
 
-    // ── Events (all via AbortController) ──
+    // -- Events (all via AbortController) --
     const ac = new AbortController();
     const signal = ac.signal;
 
@@ -225,7 +229,7 @@ export function mountUIFX(container, type, recipeFactory, {
         }, { signal });
     }
 
-    // ── Render loop (shared ticker) ──
+    // -- Render loop (shared ticker) --
     const ticker = acquireTicker();
     let destroyed = false;
 
@@ -242,7 +246,7 @@ export function mountUIFX(container, type, recipeFactory, {
         ctx.restore();
     });
 
-    // ── Public API ──
+    // -- Public API --
     return {
         /** The native HTML element (for external state reads). */
         el,

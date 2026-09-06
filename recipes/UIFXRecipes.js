@@ -1,5 +1,5 @@
 /**
- * @zakkster/lite-ui-fx — Recipe Collection
+ * @zakkster/lite-ui-fx -- Recipe Collection
  *
  * 10 canvas-rendered UI component recipes:
  *   Toggles: SwarmToggle, LiquidToggle, NeonPulseToggle
@@ -8,31 +8,31 @@
  *
  * Recipe interface:
  *   {
- *     init?(ctx, w, h, padding)           — allocate state, sprites
- *     tick(ctx, dt, now, state, pointer)   — render every frame (REQUIRED)
- *     onHover?(state, pointer)             — pointer entered element
- *     onLeave?(state, pointer)             — pointer left element
- *     onClick?(x, y, state)               — pointer down on element
- *     onToggle?(checked, state)            — checkbox changed (toggles only)
- *     onDrag?(value, velocity, state)      — slider moved (sliders only)
- *     destroy?()                           — cleanup
+ *     init?(ctx, w, h, padding)           -- allocate state, sprites
+ *     tick(ctx, dt, now, state, pointer)   -- render every frame (REQUIRED)
+ *     onHover?(state, pointer)             -- pointer entered element
+ *     onLeave?(state, pointer)             -- pointer left element
+ *     onClick?(x, y, state)               -- pointer down on element
+ *     onToggle?(checked, state)            -- checkbox changed (toggles only)
+ *     onDrag?(value, velocity, state)      -- slider moved (sliders only)
+ *     destroy?()                           -- cleanup
  *   }
  *
  * State object (provided by UIFXController):
  *   { hover, active, focused, toggled, val, w, h, padding, dpr }
  *
  * Uses:
- *   @zakkster/lite-lerp    — lerp, clamp, easeOut
- *   @zakkster/lite-random  — deterministic particle effects
+ *   @zakkster/lite-lerp    -- lerp, clamp, easeOut
+ *   @zakkster/lite-random  -- deterministic particle effects
  */
 
 import { lerp, clamp, easeOut } from '@zakkster/lite-lerp';
 import { Random } from '@zakkster/lite-random';
 
 
-// ─────────────────────────────────────────────────────────
+// ---------------------------------------------------------
 //  SHARED HELPERS
-// ─────────────────────────────────────────────────────────
+// ---------------------------------------------------------
 
 /** Draw a rounded rect (safe for Safari < 17.4). */
 function roundRect(ctx, x, y, w, h, r) {
@@ -68,12 +68,12 @@ function drawStateLabel(ctx, text, x, y, color) {
 }
 
 
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 //  TOGGLE RECIPES
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 
 /**
- * Swarm Toggle — 150 particles form the knob shape.
+ * Swarm Toggle -- 150 particles form the knob shape.
  * On toggle, they explode outward then regroup at the new position.
  * Uses sunflower phyllotaxis for the packed formation.
  */
@@ -136,14 +136,14 @@ export function SwarmToggle({ seed = 42, count = 150 } = {}) {
         },
 
         destroy() {
-            // TypedArrays are GC'd automatically — no manual cleanup needed
+            // TypedArrays are GC'd automatically -- no manual cleanup needed
         },
     };
 }
 
 
 /**
- * Liquid Toggle — Metaball-style stretching knob.
+ * Liquid Toggle -- Metaball-style stretching knob.
  * The knob elongates in the direction of motion, squashes perpendicular.
  */
 export function LiquidToggle() {
@@ -177,7 +177,7 @@ export function LiquidToggle() {
 
 
 /**
- * Neon Pulse Toggle — Expanding shockwave rings on toggle.
+ * Neon Pulse Toggle -- Expanding shockwave rings on toggle.
  */
 export function NeonPulseToggle() {
     let rings = [];
@@ -224,12 +224,12 @@ export function NeonPulseToggle() {
 }
 
 
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 //  BUTTON RECIPES
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 
 /**
- * Magnetic Button — The entire button follows the cursor with spring physics.
+ * Magnetic Button -- The entire button follows the cursor with spring physics.
  * Squashes on click, springs back.
  */
 export function MagneticButton({ maxPull = 15 } = {}) {
@@ -273,7 +273,7 @@ export function MagneticButton({ maxPull = 15 } = {}) {
 
 
 /**
- * Shatter Button — Click explodes into falling shards, reforms after 1.5s.
+ * Shatter Button -- Click explodes into falling shards, reforms after 1.5s.
  */
 export function ShatterButton({ seed = 42 } = {}) {
     const rng = new Random(seed);
@@ -333,7 +333,7 @@ export function ShatterButton({ seed = 42 } = {}) {
 
 
 /**
- * Confetti Button — 3D tumbling confetti burst from click point.
+ * Confetti Button -- 3D tumbling confetti burst from click point.
  */
 export function ConfettiButton({ seed = 42, colors = ['#6ee7b6', '#38bdf8', '#a78bfa', '#fbbf24', '#f43f5e'] } = {}) {
     const rng = new Random(seed);
@@ -398,7 +398,7 @@ export function ConfettiButton({ seed = 42, colors = ['#6ee7b6', '#38bdf8', '#a7
 
 
 /**
- * Glitch Button — RGB channel split on hover. Random slice displacement.
+ * Glitch Button -- RGB channel split on hover. Random slice displacement.
  */
 export function GlitchButton({ seed = 42 } = {}) {
     const rng = new Random(seed);
@@ -439,12 +439,12 @@ export function GlitchButton({ seed = 42 } = {}) {
 }
 
 
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 //  SLIDER RECIPES
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 
 /**
- * Spark Slider — Emits directional sparks based on drag velocity.
+ * Spark Slider -- Emits directional sparks based on drag velocity.
  * Sparks fly opposite to drag direction with motion-blur stretch.
  */
 export function SparkSlider({ seed = 42, color = '#fbbf24' } = {}) {
@@ -516,7 +516,7 @@ export function SparkSlider({ seed = 42, color = '#fbbf24' } = {}) {
 
 
 /**
- * Cosmic Slider — Thumb is a black hole that sucks in background dust.
+ * Cosmic Slider -- Thumb is a black hole that sucks in background dust.
  * Particles respawn when consumed.
  */
 export function CosmicSlider({ seed = 42, dustCount = 80 } = {}) {
@@ -573,7 +573,7 @@ export function CosmicSlider({ seed = 42, dustCount = 80 } = {}) {
 
 
 /**
- * Laser Slider — Energy beam traces the filled track. Pulsing plasma thumb.
+ * Laser Slider -- Energy beam traces the filled track. Pulsing plasma thumb.
  */
 export function LaserSlider() {
     let pulseTime = 0;
@@ -616,9 +616,9 @@ export function LaserSlider() {
 }
 
 
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 //  ALL RECIPES MAP
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 
 export const UIFXRecipes = {
     SwarmToggle, LiquidToggle, NeonPulseToggle,

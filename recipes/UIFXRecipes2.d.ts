@@ -1,37 +1,37 @@
 import type { UIFXRecipe } from '../UIFXController';
 
-// ── Toggles ──
+// -- Toggles --
 export declare function PendulumToggle(): UIFXRecipe;
 export declare function CircuitToggle(options?: { seed?: number }): UIFXRecipe;
 export declare function LightningToggle(options?: { seed?: number }): UIFXRecipe;
 export declare function DNAToggle(): UIFXRecipe;
 
-// ── Buttons ──
+// -- Buttons --
 export declare function HeartbeatButton(options?: { seed?: number }): UIFXRecipe;
 export declare function BreathingButton(): UIFXRecipe;
 export declare function InkSplashButton(options?: { seed?: number }): UIFXRecipe;
 export declare function PixelDissolveButton(options?: { seed?: number; cols?: number; rows?: number }): UIFXRecipe;
 export declare function FireworkButton(options?: { seed?: number }): UIFXRecipe;
 
-// ── Sliders ──
+// -- Sliders --
 export declare function AuroraSlider(): UIFXRecipe;
 export declare function WaveSlider(options?: { seed?: number }): UIFXRecipe;
 export declare function ElasticBandSlider(): UIFXRecipe;
 export declare function GravitySlider(): UIFXRecipe;
 
-// ── Loaders ──
+// -- Loaders --
 export declare function OrbitLoader(): UIFXRecipe;
 export declare function HelixLoader(): UIFXRecipe;
 
-// ── Checkboxes ──
+// -- Checkboxes --
 export declare function RippleCheck(): UIFXRecipe;
 export declare function MorphCheck(): UIFXRecipe;
 
-// ── Counters ──
+// -- Counters --
 export declare function FlameCounter(options?: { seed?: number }): UIFXRecipe;
 export declare function GlitchCounter(options?: { seed?: number }): UIFXRecipe;
 
-// ── Rating ──
+// -- Rating --
 export declare function BubbleRating(options?: { seed?: number }): UIFXRecipe;
 
 export declare const UIFXRecipes2: {

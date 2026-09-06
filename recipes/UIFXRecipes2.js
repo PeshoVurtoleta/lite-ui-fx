@@ -1,5 +1,5 @@
 /**
- * @zakkster/lite-ui-fx — Recipe Collection Vol. 2
+ * @zakkster/lite-ui-fx -- Recipe Collection Vol. 2
  *
  * 20 recipes across 7 UI element categories:
  *   Toggles (4): Pendulum, Circuit, Lightning, DNA
@@ -16,7 +16,7 @@
 import { lerp, clamp, easeOut, easeIn, easeInOut } from '@zakkster/lite-lerp';
 import { Random } from '@zakkster/lite-random';
 
-// ── Shared helpers ──
+// -- Shared helpers --
 function roundRect(ctx, x, y, w, h, r) {
     ctx.beginPath(); ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y);
     ctx.arcTo(x + w, y, x + w, y + r, r); ctx.lineTo(x + w, y + h - r);
@@ -33,11 +33,11 @@ function focusRing(ctx, w, h, r) {
 }
 
 
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 //  TOGGLES
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 
-/** 1. Pendulum Toggle — The knob swings like a pendulum with overshoot. */
+/** 1. Pendulum Toggle -- The knob swings like a pendulum with overshoot. */
 export function PendulumToggle() {
     let angle = -0.4, velocity = 0;
     const STIFFNESS = 12, DAMPING = 3.5;
@@ -65,7 +65,7 @@ export function PendulumToggle() {
     };
 }
 
-/** 2. Circuit Toggle — Electricity flows through a circuit path when ON. */
+/** 2. Circuit Toggle -- Electricity flows through a circuit path when ON. */
 export function CircuitToggle({ seed = 42 } = {}) {
     const rng = new Random(seed);
     let sparks = [], knobX = 18, flowT = 0;
@@ -110,7 +110,7 @@ export function CircuitToggle({ seed = 42 } = {}) {
     };
 }
 
-/** 3. Lightning Toggle — Electric arc between endpoints. */
+/** 3. Lightning Toggle -- Electric arc between endpoints. */
 export function LightningToggle({ seed = 42 } = {}) {
     const rng = new Random(seed);
     let knobX = 18, arcTime = 0;
@@ -145,7 +145,7 @@ export function LightningToggle({ seed = 42 } = {}) {
     };
 }
 
-/** 4. DNA Toggle — Double helix wraps around the track. */
+/** 4. DNA Toggle -- Double helix wraps around the track. */
 export function DNAToggle() {
     let knobX = 18, phase = 0;
     return {
@@ -180,11 +180,11 @@ export function DNAToggle() {
 }
 
 
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 //  BUTTONS
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 
-/** 5. Heartbeat Button — Heart icon pumps with particle burst on click. */
+/** 5. Heartbeat Button -- Heart icon pumps with particle burst on click. */
 export function HeartbeatButton({ seed = 42 } = {}) {
     const rng = new Random(seed);
     let scale = 1, particles = [], beatPhase = 0;
@@ -229,13 +229,13 @@ export function HeartbeatButton({ seed = 42 } = {}) {
     };
 }
 
-/** 6. Breathing Button — Inhale/exhale pulse with particle halo. */
+/** 6. Breathing Button -- Inhale/exhale pulse with particle halo. */
 export function BreathingButton() {
     let phase = 0;
     return {
         tick(ctx, dt, now, st) {
             phase += dt * 1.5;
-            const breath = (Math.sin(phase) + 1) / 2; // 0–1
+            const breath = (Math.sin(phase) + 1) / 2; // 0--1
             const radius = 4 + breath * 6;
 
             // Outer glow
@@ -257,7 +257,7 @@ export function BreathingButton() {
     };
 }
 
-/** 7. Ink Splash Button — Calligraphy ink splatter on click. */
+/** 7. Ink Splash Button -- Calligraphy ink splatter on click. */
 export function InkSplashButton({ seed = 42 } = {}) {
     const rng = new Random(seed);
     let splats = [], pressScale = 1;
@@ -290,7 +290,7 @@ export function InkSplashButton({ seed = 42 } = {}) {
     };
 }
 
-/** 8. Pixel Dissolve Button — Hover breaks into floating pixels, reforms on leave. */
+/** 8. Pixel Dissolve Button -- Hover breaks into floating pixels, reforms on leave. */
 export function PixelDissolveButton({ seed = 42, cols = 16, rows = 5 } = {}) {
     const rng = new Random(seed);
     const N = cols * rows;
@@ -337,7 +337,7 @@ export function PixelDissolveButton({ seed = 42, cols = 16, rows = 5 } = {}) {
     };
 }
 
-/** 9. Firework Button — Shoots fireworks upward on click. */
+/** 9. Firework Button -- Shoots fireworks upward on click. */
 export function FireworkButton({ seed = 42 } = {}) {
     const rng = new Random(seed);
     let rockets = [], sparks = [], pressScale = 1;
@@ -352,7 +352,7 @@ export function FireworkButton({ seed = 42 } = {}) {
             ctx.save(); ctx.translate(st.w / 2, st.h / 2); ctx.scale(pressScale, pressScale); ctx.translate(-st.w / 2, -st.h / 2);
             ctx.fillStyle = 'rgba(255,255,255,.06)'; roundRect(ctx, 0, 0, st.w, st.h, 10); ctx.fill();
             ctx.fillStyle = '#fbbf24'; ctx.font = "600 13px 'Space Grotesk',sans-serif"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText('🎆 FIRE', st.w / 2, st.h / 2);
+            ctx.fillText('* FIRE', st.w / 2, st.h / 2);
             ctx.restore();
 
             // Rockets
@@ -383,11 +383,11 @@ export function FireworkButton({ seed = 42 } = {}) {
 }
 
 
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 //  SLIDERS
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 
-/** 10. Aurora Slider — Northern lights colors flow along the filled track. */
+/** 10. Aurora Slider -- Northern lights colors flow along the filled track. */
 export function AuroraSlider() {
     let time = 0;
     const colors = ['#6ee7b6', '#38bdf8', '#a78bfa', '#c084fc'];
@@ -412,7 +412,7 @@ export function AuroraSlider() {
     };
 }
 
-/** 11. Wave Slider — Audio waveform visualization on the filled track. */
+/** 11. Wave Slider -- Audio waveform visualization on the filled track. */
 export function WaveSlider({ seed = 42 } = {}) {
     const rng = new Random(seed);
     const bars = new Float32Array(40);
@@ -434,13 +434,13 @@ export function WaveSlider({ seed = 42 } = {}) {
     };
 }
 
-/** 12. Elastic Band Slider — Track rubber-bands ahead of thumb, snaps back. */
+/** 12. Elastic Band Slider -- Track rubber-bands ahead of thumb, snaps back. */
 export function ElasticBandSlider() {
     let leadX = 0;
     return {
         tick(ctx, dt, now, st) {
             const tx = st.val * st.w;
-            leadX = lerp(leadX, tx, dt * 4); // Laggy — creates stretch
+            leadX = lerp(leadX, tx, dt * 4); // Laggy -- creates stretch
             const stretch = (tx - leadX) * 0.3;
 
             ctx.fillStyle = 'rgba(255,255,255,.06)'; roundRect(ctx, 0, 12, st.w, 4, 2); ctx.fill();
@@ -458,7 +458,7 @@ export function ElasticBandSlider() {
     };
 }
 
-/** 13. Gravity Slider — Track sags under the weight of the thumb. */
+/** 13. Gravity Slider -- Track sags under the weight of the thumb. */
 export function GravitySlider() {
     return {
         tick(ctx, dt, now, st) {
@@ -487,11 +487,11 @@ export function GravitySlider() {
 }
 
 
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 //  LOADERS (use toggle to start/stop)
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 
-/** 14. Orbit Loader — Planets orbit a sun. Toggle starts/stops. */
+/** 14. Orbit Loader -- Planets orbit a sun. Toggle starts/stops. */
 export function OrbitLoader() {
     let phase = 0;
     const planets = [
@@ -521,7 +521,7 @@ export function OrbitLoader() {
     };
 }
 
-/** 15. Helix Loader — DNA double helix spinning. */
+/** 15. Helix Loader -- DNA double helix spinning. */
 export function HelixLoader() {
     let phase = 0;
     return {
@@ -550,11 +550,11 @@ export function HelixLoader() {
 }
 
 
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 //  CHECKBOXES (use toggle events)
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 
-/** 16. Ripple Checkbox — Material-style ripple ring + morphing checkmark. */
+/** 16. Ripple Checkbox -- Material-style ripple ring + morphing checkmark. */
 export function RippleCheck() {
     let ripples = [], checkT = 0;
     return {
@@ -586,13 +586,13 @@ export function RippleCheck() {
                 if (p2 > 0) ctx.lineTo(cx + 14 * p2, cy + 7 - 14 * p2);
                 ctx.stroke(); ctx.lineCap = 'butt';
             }
-            label(ctx, st.toggled ? '✓' : '○', sz / 2, sz + 12, st.toggled ? '#6ee7b6' : '#8888aa');
+            label(ctx, st.toggled ? 'v' : 'o', sz / 2, sz + 12, st.toggled ? '#6ee7b6' : '#8888aa');
             if (st.focused) focusRing(ctx, sz, sz, 6);
         },
     };
 }
 
-/** 17. Morph Checkbox — X morphs into checkmark smoothly. */
+/** 17. Morph Checkbox -- X morphs into checkmark smoothly. */
 export function MorphCheck() {
     let t = 0;
     return {
@@ -605,7 +605,7 @@ export function MorphCheck() {
 
             ctx.strokeStyle = t > 0.5 ? '#38bdf8' : '#9999b8'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
 
-            // Morph: X → checkmark by interpolating endpoints
+            // Morph: X -> checkmark by interpolating endpoints
             const x1a = cx - 8, y1a = cy - 8; // X top-left
             const x1b = cx + 8, y1b = cy + 8; // X bottom-right
             const x2a = cx - 8, y2a = cy + 8; // X bottom-left
@@ -626,18 +626,18 @@ export function MorphCheck() {
             ctx.stroke();
             ctx.lineCap = 'butt';
 
-            label(ctx, st.toggled ? '✓' : '✕', sz / 2, sz + 12, st.toggled ? '#38bdf8' : '#8888aa');
+            label(ctx, st.toggled ? 'v' : 'x', sz / 2, sz + 12, st.toggled ? '#38bdf8' : '#8888aa');
             if (st.focused) focusRing(ctx, sz, sz, 6);
         },
     };
 }
 
 
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 //  COUNTERS (use slider val as input)
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 
-/** 18. Flame Counter — Number with rising heat particles driven by slider value. */
+/** 18. Flame Counter -- Number with rising heat particles driven by slider value. */
 export function FlameCounter({ seed = 42 } = {}) {
     const rng = new Random(seed);
     let embers = [];
@@ -675,7 +675,7 @@ export function FlameCounter({ seed = 42 } = {}) {
     };
 }
 
-/** 19. Glitch Counter — Number glitches and jitters as slider value increases. */
+/** 19. Glitch Counter -- Number glitches and jitters as slider value increases. */
 export function GlitchCounter({ seed = 42 } = {}) {
     const rng = new Random(seed);
     return {
@@ -716,11 +716,11 @@ export function GlitchCounter({ seed = 42 } = {}) {
 }
 
 
-// ═══════════════════════════════════════════════════════════
-//  RATING (uses slider position mapped to 1–5 stars)
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
+//  RATING (uses slider position mapped to 1--5 stars)
+// ===========================================================
 
-/** 20. Bubble Rating — 5 bubbles inflate based on slider position. Click pops them. */
+/** 20. Bubble Rating -- 5 bubbles inflate based on slider position. Click pops them. */
 export function BubbleRating({ seed = 42 } = {}) {
     const rng = new Random(seed);
     let pops = [], sizes = new Float32Array(5);
@@ -772,9 +772,9 @@ export function BubbleRating({ seed = 42 } = {}) {
 }
 
 
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 //  EXPORT MAP
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 
 export const UIFXRecipes2 = {
     PendulumToggle, CircuitToggle, LightningToggle, DNAToggle,

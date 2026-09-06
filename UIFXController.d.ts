@@ -1,3 +1,5 @@
+export declare const VERSION: string;
+
 export type UITypeValue = 'button' | 'toggle' | 'slider';
 
 export declare const UIType: Readonly<{

@@ -1,5 +1,7 @@
 # @zakkster/lite-ui-fx
-> Canvas-hijacked UI components with pluggable recipe system. 30 built-in recipes.
+> Canvas-hijacked UI components with pluggable recipe system. 50 built-in recipes.
+
+VERSION 1.0.5
 
 ## Install
 npm i @zakkster/lite-ui-fx
@@ -9,11 +11,11 @@ Native HTML element (opacity:0, z-index:2) handles events + a11y.
 Canvas overlay (z-index:1) renders visuals via a recipe factory function.
 Recipe = { tick(), init?(), onHover?(), onClick?(), onToggle?(), onDrag?(), destroy?() }
 
-## Import — Controller
+## Import -- Controller
 import { mountUIFX, UIType } from '@zakkster/lite-ui-fx';
 
-## Import — Recipes (3 volumes, 30 total)
-import { SwarmToggle, MagneticButton, SparkSlider } from ./recipes/UIFXRecipes.js';
+## Import -- Recipes (3 volumes, 50 total)
+import { SwarmToggle, MagneticButton, SparkSlider } from './recipes/UIFXRecipes.js';
 import { PendulumToggle, HeartbeatButton, AuroraSlider } from './recipes/UIFXRecipes2.js';
 import { VolumeKnob, WaterLevel, TimerCountdown } from './recipes/UIFXRecipes3.js';
 
@@ -22,21 +24,21 @@ const instance = mountUIFX(container, UIType.TOGGLE, SwarmToggle, { label: 'Soun
 instance.destroy(); // cleanup
 
 ## Element Types
-UIType.TOGGLE → <input type="checkbox" role="switch"> → state.toggled, onToggle(checked)
-UIType.BUTTON → <button> → state.active, onClick(x, y, state)
-UIType.SLIDER → <input type="range"> → state.val (0–1), onDrag(val, velocity)
+UIType.TOGGLE -> <input type="checkbox" role="switch"> -> state.toggled, onToggle(checked)
+UIType.BUTTON -> <button> -> state.active, onClick(x, y, state)
+UIType.SLIDER -> <input type="range"> -> state.val (0-1), onDrag(val, velocity)
 
 ## State Object (provided to tick every frame)
 { hover, active, focused, toggled, val, w, h, padding, dpr }
 
-## 30 Built-in Recipes
+## 50 Built-in Recipes
 
-### Vol. 1 (UIFXRecipes.js) — 10 recipes
+### Vol. 1 (UIFXRecipes.js) -- 10 recipes
 Toggles: SwarmToggle, LiquidToggle, NeonPulseToggle
 Buttons: MagneticButton, ShatterButton, ConfettiButton, GlitchButton
 Sliders: SparkSlider, CosmicSlider, LaserSlider
 
-### Vol. 2 (UIFXRecipes2.js) — 20 recipes
+### Vol. 2 (UIFXRecipes2.js) -- 20 recipes
 Toggles: PendulumToggle, CircuitToggle, LightningToggle, DNAToggle
 Buttons: HeartbeatButton, BreathingButton, InkSplashButton, PixelDissolveButton, FireworkButton
 Sliders: AuroraSlider, WaveSlider, ElasticBandSlider, GravitySlider
@@ -45,7 +47,7 @@ Checkboxes: RippleCheck, MorphCheck
 Counters: FlameCounter, GlitchCounter
 Rating: BubbleRating
 
-### Vol. 3 (UIFXRecipes3.js) — 20 recipes
+### Vol. 3 (UIFXRecipes3.js) -- 20 recipes
 Knobs: VolumeKnob, CompassKnob
 Progress: RingProgress, BatteryGauge, SignalMeter
 Controls: PillTabs, Stepper, RadioOrbit

@@ -1,35 +1,35 @@
 import type { UIFXRecipe } from '../UIFXController';
 
-// ── Knobs ──
+// -- Knobs --
 export declare function VolumeKnob(): UIFXRecipe;
 export declare function CompassKnob(): UIFXRecipe;
 
-// ── Progress ──
+// -- Progress --
 export declare function RingProgress(options?: { seed?: number }): UIFXRecipe;
 export declare function BatteryGauge(): UIFXRecipe;
 export declare function SignalMeter(): UIFXRecipe;
 
-// ── Controls ──
+// -- Controls --
 export declare function PillTabs(): UIFXRecipe;
 export declare function Stepper(): UIFXRecipe;
 export declare function RadioOrbit(): UIFXRecipe;
 
-// ── Indicators ──
+// -- Indicators --
 export declare function PasswordStrength(): UIFXRecipe;
 export declare function WaterLevel(): UIFXRecipe;
 export declare function HeatMap(options?: { seed?: number }): UIFXRecipe;
 
-// ── Mood ──
+// -- Mood --
 export declare function DayNightToggle(options?: { seed?: number }): UIFXRecipe;
 export declare function ReactionPicker(): UIFXRecipe;
 export declare function NotificationBell(): UIFXRecipe;
 
-// ── Feedback ──
+// -- Feedback --
 export declare function TypewriterField(): UIFXRecipe;
 export declare function SoundWaveBtn(): UIFXRecipe;
 export declare function UploadProgress(): UIFXRecipe;
 
-// ── Fun ──
+// -- Fun --
 export declare function ScratchReveal(options?: { seed?: number }): UIFXRecipe;
 export declare function TimerCountdown(): UIFXRecipe;
 export declare function PullRefresh(): UIFXRecipe;
