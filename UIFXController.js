@@ -22,7 +22,7 @@ import { Ticker } from '@zakkster/lite-ticker';
 
 // Three-place version sync: this constant, package.json "version", and the
 // VERSION line in llms.txt must always match. /release keeps them locked.
-export const VERSION = '1.1.0';
+export const VERSION = '1.2.0';
 
 // ---------------------------------------------------------
 //  SHARED TICKER (ref-counted, one RAF for all UI components)
@@ -175,6 +175,13 @@ export function mountUIFX(container, type, recipeFactory, options = {}) {
     // 1. container
     if (!container || typeof container.appendChild !== 'function') {
         throw new Error('mountUIFX: container must be a DOM element');
+    }
+
+    // 1b. type: exactly one of the three known element types. An unknown or
+    //     undefined type is an Error here, never a silent default to a button
+    //     (fail closed -- the type selects the native element).
+    if (type !== UIType.BUTTON && type !== UIType.TOGGLE && type !== UIType.SLIDER) {
+        throw new Error('mountUIFX: type must be UIType.BUTTON, UIType.TOGGLE, or UIType.SLIDER');
     }
 
     // 2. options: unknown keys -> did-you-mean; value/checked/disabled

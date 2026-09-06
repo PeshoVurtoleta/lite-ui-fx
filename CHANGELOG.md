@@ -5,6 +5,53 @@ All notable changes to `@zakkster/lite-ui-fx` are documented here.
 The format follows Keep a Changelog; this project adheres to Semantic
 Versioning.
 
+## [1.2.0] -- unreleased
+
+Recipes ship as code (U-13). The three GitHub-only recipe volumes are
+consolidated into one `UIFXRecipes.js` at the package root, exposed as the
+`./recipes` subpath export behind a registry. No recipe body changes -- the
+zero-GC / size-true / theming sweep is U3.
+
+### Added
+
+- `./recipes` subpath export: all 50 recipes ship in one `UIFXRecipes.js`
+  (with `UIFXRecipes.d.ts`), versioned, typed, and tree-shakeable
+  (`sideEffects: false`). `UIFX-RECIPE-GUIDE.md` moves to the package root and
+  ships as well.
+- Recipe registry (ported from `@zakkster/lite-scratch-fx`): `RECIPES`
+  (null-prototype, id -> factory), `RECIPE_META` (`{ id, name, type, family,
+  themeable, motionSafe }`; `themeable` and `motionSafe` are `false` for all
+  until U3), `RECIPE_NAMES` (frozen), and `registerRecipe(id, factory, meta)`
+  with an in-place meta-merge.
+- `mountRecipe(container, id, options?)`: resolves the id fail closed (an
+  unknown id throws with a did-you-mean; a non-string id gets the same clean
+  message), asserts any `options.type` matches the recipe's declared type, then
+  mounts via `mountUIFX`.
+- Torture: `t0-lifecycle` and `t1-degenerate` iterate `RECIPE_META`, so all 50
+  recipes are mounted, exercised, and destroyed by construction. New
+  `test/registry.test.mjs` (registry + `mountRecipe` contract + a boundary
+  matrix) and `test/treeshake.test.mjs` (an esbuild proof that importing one
+  recipe drops the others).
+
+### Changed
+
+- Fail closed on the element type: `mountUIFX` now throws on any `type` other
+  than `UIType.BUTTON` / `TOGGLE` / `SLIDER` (an unknown type previously became
+  a button silently), and `registerRecipe` rejects a recipe with no valid type
+  before any mutation.
+- The recipes are no longer a GitHub ZIP / copy-paste. `README.md` and
+  `llms.txt` document the `./recipes` import and drop the "not included in the
+  npm package" wording.
+- `package.json`: `exports["./recipes"]` added; `files[]` ships
+  `UIFXRecipes.js`, `UIFXRecipes.d.ts`, and `UIFX-RECIPE-GUIDE.md`; `esbuild`
+  added as a devDependency (the tree-shake proof only -- not shipped).
+- Decision recorded in `decisions/0001-recipes-position.md`.
+
+### Removed
+
+- The `recipes/` directory (three volumes plus their `.d.ts`). Their exports
+  are unchanged and now come from the root `UIFXRecipes.js`.
+
 ## [1.1.0] -- 2026-09-06
 
 Controller correctness: the two S1 defects (U-01, U-02) and three

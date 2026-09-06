@@ -1,6 +1,6 @@
 {
   "name": "@zakkster/lite-ui-fx",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Canvas-hijacked UI components with a pluggable recipe system. 50 built-in recipes across toggles, buttons, sliders, knobs, loaders, checkboxes, counters, and ratings.",
   "author": "Zahary Shinikchiev <shinikchiev@yahoo.com>",
   "license": "MIT",
@@ -12,13 +12,19 @@
     ".": {
       "import": "./UIFXController.js",
       "types": "./UIFXController.d.ts"
+    },
+    "./recipes": {
+      "import": "./UIFXRecipes.js",
+      "types": "./UIFXRecipes.d.ts"
     }
   },
   "files": [
     "UIFXController.js",
     "UIFXController.d.ts",
+    "UIFXRecipes.js",
+    "UIFXRecipes.d.ts",
+    "UIFX-RECIPE-GUIDE.md",
     "llms.txt",
-    "recipes/UIFX-RECIPE-GUIDE.md",
     "CHANGELOG.md",
     "README.md",
     "LICENSE"
@@ -41,14 +47,15 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@zakkster/lite-ticker": "^1.0.0",
     "@zakkster/lite-lerp": "^1.0.0",
-    "@zakkster/lite-random": "^1.0.0"
+    "@zakkster/lite-random": "^1.0.0",
+    "@zakkster/lite-ticker": "^1.0.0"
   },
   "devDependencies": {
     "@zakkster/lite-gc-profiler": "^1.16.0",
     "@zakkster/lite-leak": "^1.10.0",
-    "@zakkster/lite-signal": "^1.5.1"
+    "@zakkster/lite-signal": "^1.5.1",
+    "esbuild": "^0.28.2"
   },
   "scripts": {
     "test": "node --test test/*.test.mjs",

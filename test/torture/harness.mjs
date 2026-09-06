@@ -36,6 +36,7 @@ installDom();
 raf.install();
 
 const { mountUIFX, UIType } = await import('../../UIFXController.js');
+const { RECIPES, RECIPE_META } = await import('../../UIFXRecipes.js');
 
 // ---------------------------------------------------------------------------
 //  Seeded xorshift PRNG (TORTURE_SEED override; print seed on failure)
@@ -128,6 +129,8 @@ export {
     Ctx2DStub, EventStub, PointerEventStub, FocusEventStub, raf,
     // controller
     mountUIFX, UIType,
+    // recipes registry (drives the meta-driven t0/t1 sweep over all 50)
+    RECIPES, RECIPE_META,
     // signal
     createRoot, effect,
     // prng

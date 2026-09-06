@@ -1,7 +1,7 @@
 # @zakkster/lite-ui-fx
 > Canvas-hijacked UI components with pluggable recipe system. 50 built-in recipes.
 
-VERSION 1.1.0
+VERSION 1.2.0
 
 ## Install
 npm i @zakkster/lite-ui-fx
@@ -14,10 +14,15 @@ Recipe = { tick(), init?(), onHover?(), onClick?(), onToggle?(), onDrag?(), dest
 ## Import -- Controller
 import { mountUIFX, UIType } from '@zakkster/lite-ui-fx';
 
-## Import -- Recipes (3 volumes, 50 total)
-import { SwarmToggle, MagneticButton, SparkSlider } from './recipes/UIFXRecipes.js';
-import { PendulumToggle, HeartbeatButton, AuroraSlider } from './recipes/UIFXRecipes2.js';
-import { VolumeKnob, WaterLevel, TimerCountdown } from './recipes/UIFXRecipes3.js';
+## Import -- Recipes (one ./recipes subpath, 50 total, tree-shakeable)
+import { SwarmToggle, MagneticButton, SparkSlider } from '@zakkster/lite-ui-fx/recipes';
+import { PendulumToggle, HeartbeatButton, AuroraSlider } from '@zakkster/lite-ui-fx/recipes';
+import { VolumeKnob, WaterLevel, TimerCountdown } from '@zakkster/lite-ui-fx/recipes';
+
+## Import -- Recipe registry (data-driven pickers)
+import { RECIPES, RECIPE_META, RECIPE_NAMES, registerRecipe, mountRecipe } from '@zakkster/lite-ui-fx/recipes';
+// RECIPES id->factory (null-proto); RECIPE_META { id, name, type, family, themeable, motionSafe }; RECIPE_NAMES frozen.
+// mountRecipe(container, id, options?): resolves id fail-closed (did-you-mean), asserts META.type, mounts.
 
 ## Mount
 const instance = mountUIFX(container, UIType.TOGGLE, SwarmToggle, { label: 'Sound' });
@@ -39,12 +44,12 @@ UIType.SLIDER -> <input type="range"> -> state.val (0-1), onDrag(val, velocity)
 
 ## 50 Built-in Recipes
 
-### Vol. 1 (UIFXRecipes.js) -- 10 recipes
+### Vol. 1 -- 10 recipes
 Toggles: SwarmToggle, LiquidToggle, NeonPulseToggle
 Buttons: MagneticButton, ShatterButton, ConfettiButton, GlitchButton
 Sliders: SparkSlider, CosmicSlider, LaserSlider
 
-### Vol. 2 (UIFXRecipes2.js) -- 20 recipes
+### Vol. 2 -- 20 recipes
 Toggles: PendulumToggle, CircuitToggle, LightningToggle, DNAToggle
 Buttons: HeartbeatButton, BreathingButton, InkSplashButton, PixelDissolveButton, FireworkButton
 Sliders: AuroraSlider, WaveSlider, ElasticBandSlider, GravitySlider
@@ -53,7 +58,7 @@ Checkboxes: RippleCheck, MorphCheck
 Counters: FlameCounter, GlitchCounter
 Rating: BubbleRating
 
-### Vol. 3 (UIFXRecipes3.js) -- 20 recipes
+### Vol. 3 -- 20 recipes
 Knobs: VolumeKnob, CompassKnob
 Progress: RingProgress, BatteryGauge, SignalMeter
 Controls: PillTabs, Stepper, RadioOrbit

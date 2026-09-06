@@ -64,6 +64,12 @@ describe('mountUIFX', () => {
         i.destroy();
     });
 
+    it('throws on an unknown/undefined type (no silent button default)', () => {
+        assert.throws(() => mountUIFX(ctr, 'banana', recipe()), /type/);
+        assert.throws(() => mountUIFX(ctr, undefined, recipe()), /type/);
+        assert.equal(ctr.children.length, 0, 'rejected type leaves no wrapper');
+    });
+
     it('sets aria-label', () => {
         const i = mountUIFX(ctr, UIType.TOGGLE, recipe(), { label: 'Dark mode' });
         assert.equal(i.el.getAttribute('aria-label'), 'Dark mode');

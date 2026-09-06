@@ -40,26 +40,22 @@ https://cdpn.io/pen/debug/YPGEaYY
 
 Every recipe is zero-GC, uses `dt`-based animation, and includes accessibility indicators (focus rings, state labels).
 
-`@zakkster/lite-ui-fx` ships only the core controller on npm (zero bloat).
-All visual effects live in the GitHub repo as **recipes**.
+All 50 recipes ship in the package on the `./recipes` subpath -- versioned,
+typed, and tree-shakeable. With `sideEffects: false`, importing one recipe pulls
+in only that recipe, so a controller-only install stays tiny.
 
-**Recipe Collections:**
-- Vol. 1 (10 recipes):
-  https://github.com/PeshoVurtoleta/lite-ui-fx/blob/main/recipes/UIFXRecipes.js
-- Vol. 2 (20 recipes):
-  https://github.com/PeshoVurtoleta/lite-ui-fx/blob/main/recipes/UIFXRecipes2.js
-- Vol. 3 (20 recipes):
-  https://github.com/PeshoVurtoleta/lite-ui-fx/blob/main/recipes/UIFXRecipes3.js
+```javascript
+import { mountUIFX, UIType } from '@zakkster/lite-ui-fx';
+import { SwarmToggle } from '@zakkster/lite-ui-fx/recipes';
+```
 
-**How to write your own:**
-https://github.com/PeshoVurtoleta/lite-ui-fx/blob/main/recipes/UIFX-RECIPE-GUIDE.md
+The `./recipes` entry also exports a registry for data-driven pickers:
+`RECIPES` (id -> factory), `RECIPE_META` (`{ id, name, type, family }`),
+`RECIPE_NAMES`, `registerRecipe(id, factory, meta)`, and
+`mountRecipe(container, id, options?)` -- which resolves the id fail-closed
+(did-you-mean on a typo) and mounts it as its declared type.
 
-Recipes are **optional**, **open-source**, and **not included in the npm package**
-to keep the install size tiny (<2 KB).
-You can copy/paste any recipe into your project or use them as inspiration.
-
-Download all recipes as a ZIP
-https://github.com/PeshoVurtoleta/lite-ui-fx/archive/refs/heads/main.zip
+**How to write your own:** see [UIFX-RECIPE-GUIDE.md](UIFX-RECIPE-GUIDE.md), shipped in the package.
 
 Part of the [@zakkster/lite-*](https://www.npmjs.com/org/zakkster) ecosystem.
 
@@ -69,15 +65,15 @@ Part of the [@zakkster/lite-*](https://www.npmjs.com/org/zakkster) ecosystem.
 npm i @zakkster/lite-ui-fx
 ```
 
-> Looking for the visual effects?
-> Recipes live in the GitHub repo -- not in the npm package -- to keep the library tiny.
+> The 50 recipes ship in the same package on the `./recipes` subpath and
+> tree-shake, so importing one adds only that one.
 
 
 ## Quick Start
 
 ```javascript
 import { mountUIFX, UIType } from '@zakkster/lite-ui-fx';
-import { SwarmToggle } from './recipes/UIFXRecipes.js';
+import { SwarmToggle } from '@zakkster/lite-ui-fx/recipes';
 
 // Mount a canvas-rendered toggle onto a container
 const instance = mountUIFX(
@@ -101,17 +97,13 @@ instance.destroy();
 // Controller (always needed)
 import { mountUIFX, UIType } from '@zakkster/lite-ui-fx';
 
-// Recipes are NOT included in the npm package.
-// Copy them from the GitHub repo into your own ./recipes folder:
+// All 50 recipes ship on the ./recipes subpath (tree-shakeable) -- import by name:
+import { SwarmToggle, MagneticButton, SparkSlider } from '@zakkster/lite-ui-fx/recipes';
+import { PendulumToggle, HeartbeatButton, RippleCheck } from '@zakkster/lite-ui-fx/recipes';
+import { VolumeKnob, WaterLevel, TimerCountdown } from '@zakkster/lite-ui-fx/recipes';
 
-// Vol. 1 -- 10 recipes (toggles, buttons, sliders)
-import { SwarmToggle, MagneticButton, SparkSlider } from './recipes/UIFXRecipes.js';
-
-// Vol. 2 -- 20 recipes (+ loaders, checkboxes, counters, rating)
-import { PendulumToggle, HeartbeatButton, RippleCheck } from './recipes/UIFXRecipes2.js';
-
-// Vol. 3 -- 20 recipes (knobs, progress, controls, indicators, mood, feedback, fun)
-import { VolumeKnob, WaterLevel, TimerCountdown } from './recipes/UIFXRecipes3.js';
+// Registry surface for data-driven pickers:
+import { RECIPES, RECIPE_META, RECIPE_NAMES, registerRecipe, mountRecipe } from '@zakkster/lite-ui-fx/recipes';
 ```
 
 ## How It Works
@@ -192,7 +184,7 @@ Returns `{ el, canvas, wrapper, state, destroy() }`.
 
 ## Writing Custom Recipes
 
-See the full [UIFX-RECIPE-GUIDE.md](recipes/UIFX-RECIPE-GUIDE.md) (included in the package).
+See the full [UIFX-RECIPE-GUIDE.md](UIFX-RECIPE-GUIDE.md) (included in the package).
 
 Minimal recipe:
 
@@ -226,7 +218,7 @@ Full TypeScript declarations are included for:
 - `UIFXPointer`
 - `UIFXRecipe`
 
-(Recipes are not part of the npm package, so their types are not included.)
+Recipe types ship too, on the `./recipes` subpath (`UIFXRecipes.d.ts`).
 
 
 ## LLM-Friendly Documentation
