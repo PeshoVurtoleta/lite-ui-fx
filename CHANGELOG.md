@@ -5,7 +5,7 @@ All notable changes to `@zakkster/lite-ui-fx` are documented here.
 The format follows Keep a Changelog; this project adheres to Semantic
 Versioning.
 
-## [1.1.0] -- unreleased
+## [1.1.0] -- 2026-09-06
 
 Controller correctness: the two S1 defects (U-01, U-02) and three
 controller-level S3s (U-09, U-10, U-11). No visual change at default mounts.
