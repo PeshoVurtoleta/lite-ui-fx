@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>@zakkster/ui-fx — Interactive Component Playground</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+          rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg: #040408;
+            --panel: rgba(12, 12, 20, 0.9);
+            --border: rgba(255, 255, 255, 0.08);
+            --text: #e2e2f0;
+            --dim: #55ec1a;
+            --accent: #6ee7b6;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Space Grotesk', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #6ee7b6, #38bdf8, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header p {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--dim);
+            margin-top: 8px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+            width: 100%;
+            max-width: 1000px;
+        }
+
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 160px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card-title {
+            position: absolute;
+            top: 12px;
+            left: 16px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--dim);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* The Hijack Wrapper */
+        .ui-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+
+        .ui-wrapper canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        /* Native elements (Invisible but perfectly accessible and clickable) */
+        .native-btn {
+            position: relative;
+            z-index: 2;
+            opacity: 0;
+            cursor: pointer;
+            border: none;
+            font-family: 'Space Grotesk';
+            font-weight: 600;
+        }
+
+        .native-toggle {
+            position: relative;
+            z-index: 2;
+            opacity: 0;
+            cursor: pointer;
+            margin: 0;
+        }
+
+        .native-slider {
+            position: relative;
+            z-index: 2;
+            opacity: 0;
+            cursor: pointer;
+            -webkit-appearance: none;
+            background: transparent;
+        }
+
+        .native-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 24px;
+            height: 24px;
+            cursor: grab;
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>lite-ui-fx library</h1>
+    <p>10 DOM-hijacked WebGL-tier Canvas Recipes • Zero Dependencies</p>
+</div>
+
+<div class="grid" id="grid">
+</div>
+
+<script>
+    // ═══════════════════════════════════════════════════════════
+    //  CORE ECOSYSTEM (Minified for Playground)
+    // ═══════════════════════════════════════════════════════════
+    const lerp = (a, b, t) => a + (b - a) * t;
+    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+    const easeOut = t => 1 - Math.pow(1 - t, 3);
+    const rand = (min, max) => Math.random() * (max - min) + min;
+
+    // Universal Ticker
+    const Ticker = {
+        fns: new Set(), last: 0,
+        start() {
+            requestAnimationFrame(t => this.loop(t));
+        },
+        loop(now) {
+            const dt = this.last ? Math.min(now - this.last, 100) / 1000 : 0.016;
+            this.last = now;
+            for (const fn of this.fns) fn(dt, now);
+            requestAnimationFrame(t => this.loop(t));
+        }
+    };
+    Ticker.start();
+
+    // ═══════════════════════════════════════════════════════════
+    //  THE CONTROLLER (The Canvas Hijacker)
+    // ═══════════════════════════════════════════════════════════
+    class UIController {
+        constructor(container, type, id, recipeFactory) {
+            this.el = document.createElement(type === 'button' ? 'button' : 'input');
+            if (type === 'toggle') {
+                this.el.type = 'checkbox';
+                this.el.className = 'native-toggle';
+            }
+            if (type === 'slider') {
+                this.el.type = 'range';
+                this.el.min = 0;
+                this.el.max = 100;
+                this.el.value = 50;
+                this.el.className = 'native-slider';
+            }
+            if (type === 'button') {
+                this.el.textContent = 'ACTION';
+                this.el.className = 'native-btn';
+            }
+
+            this.wrapper = document.createElement('div');
+            this.wrapper.className = 'ui-wrapper';
+
+            this.canvas = document.createElement('canvas');
+            this.ctx = this.canvas.getContext('2d');
+
+            this.wrapper.appendChild(this.el);
+            this.wrapper.appendChild(this.canvas);
+            container.appendChild(this.wrapper);
+
+            // FIX: DPR-aware setup
+            this.dpr = window.devicePixelRatio || 1;
+
+            // FIX: State includes focused, padding, dpr
+            this.state = {hover: false, active: false, focused: false, val: type === 'slider' ? 0.5 : 0, toggled: false, w: 0, h: 0, padding: 0, dpr: this.dpr};
+            this.pointer = {x: -999, y: -999, vx: 0, vy: 0};
+
+            this.recipe = recipeFactory();
+            this.initSize(type);
+            this.bindEvents();
+
+            this._tickFn = (dt, now) => this.render(dt, now);
+            Ticker.fns.add(this._tickFn);
+        }
+
+        initSize(type) {
+            const w = type === 'button' ? 140 : type === 'slider' ? 180 : 64;
+            const h = type === 'button' ? 44 : type === 'slider' ? 24 : 36;
+            const pad = 40;
+            const dpr = this.dpr;
+            const cw = w + pad * 2, ch = h + pad * 2;
+
+            this.el.style.width = `${w}px`;
+            this.el.style.height = `${h}px`;
+            this.wrapper.style.width = `${w}px`;
+            this.wrapper.style.height = `${h}px`;
+
+            // FIX: DPR-scaled canvas backing store
+            this.canvas.width = cw * dpr;
+            this.canvas.height = ch * dpr;
+            // FIX: CSS size matches logical dimensions
+            this.canvas.style.width = `${cw}px`;
+            this.canvas.style.height = `${ch}px`;
+            this.canvas.style.transform = `translate(-${pad}px, -${pad}px)`;
+            this.ctx.scale(dpr, dpr);
+
+            this.state.w = w;
+            this.state.h = h;
+            this.state.padding = pad;
+            this._cw = cw;
+            this._ch = ch;
+            if (this.recipe.init) this.recipe.init(this.ctx, w, h, pad);
+        }
+
+        bindEvents() {
+            const updatePtr = (e) => {
+                const r = this.el.getBoundingClientRect();
+                const nx = e.clientX - r.left;
+                const ny = e.clientY - r.top;
+                this.pointer.vx = nx - this.pointer.x;
+                this.pointer.vy = ny - this.pointer.y;
+                this.pointer.x = nx;
+                this.pointer.y = ny;
+            };
+            this.el.addEventListener('pointermove', updatePtr);
+            this.el.addEventListener('pointerenter', (e) => {
+                this.state.hover = true;
+                updatePtr(e);
+                if (this.recipe.onHover) this.recipe.onHover();
+            });
+            this.el.addEventListener('pointerleave', () => {
+                this.state.hover = false;
+                if (this.recipe.onLeave) this.recipe.onLeave();
+            });
+            this.el.addEventListener('pointerdown', () => {
+                this.state.active = true;
+                if (this.recipe.onClick) this.recipe.onClick(this.pointer.x, this.pointer.y, this.state);
+            });
+            this.el.addEventListener('pointerup', () => this.state.active = false);
+
+            // FIX: Focus/blur tracking for accessibility
+            this.el.addEventListener('focus', () => this.state.focused = true);
+            this.el.addEventListener('blur', () => this.state.focused = false);
+
+            if (this.el.type === 'checkbox') this.el.addEventListener('change', () => {
+                this.state.toggled = this.el.checked;
+                if (this.recipe.onToggle) this.recipe.onToggle(this.state.toggled);
+            });
+            if (this.el.type === 'range') this.el.addEventListener('input', () => {
+                this.state.val = this.el.value / 100;
+                if (this.recipe.onDrag) this.recipe.onDrag(this.state.val, this.pointer.vx);
+            });
+        }
+
+        render(dt, now) {
+            const dpr = this.dpr;
+            // FIX: Reset transform before clear (DPR-aware)
+            this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            this.ctx.clearRect(0, 0, this._cw, this._ch);
+            this.ctx.save();
+            this.ctx.translate(this.state.padding, this.state.padding);
+            this.recipe.tick(this.ctx, dt, now, this.state, this.pointer);
+            this.ctx.restore();
+        }
+    }
+
+
+    // ═══════════════════════════════════════════════════════════
+    //  THE 10 UI-FX RECIPES
+    // ═══════════════════════════════════════════════════════════
+
+    // 1. SWARM TOGGLE (Particles pack into a knob, explode on click)
+    const SwarmToggle = () => {
+        const N = 150;
+        const px = new Float32Array(N), py = new Float32Array(N), vx = new Float32Array(N), vy = new Float32Array(N),
+            ox = new Float32Array(N), oy = new Float32Array(N);
+        return {
+            init(ctx, w, h) {
+                for (let i = 0; i < N; i++) {
+                    const r = 12 * Math.sqrt(i / N), th = i * Math.PI * (3 - Math.sqrt(5));
+                    ox[i] = Math.cos(th) * r;
+                    oy[i] = Math.sin(th) * r;
+                    px[i] = 18 + ox[i];
+                    py[i] = h / 2 + oy[i];
+                }
+            },
+            onToggle(checked) {
+                for (let i = 0; i < N; i++) {
+                    const a = Math.random() * Math.PI * 2, f = rand(100, 300);
+                    vx[i] += Math.cos(a) * f;
+                    vy[i] += Math.sin(a) * f;
+                }
+            },
+            tick(ctx, dt, now, st) {
+                ctx.fillStyle = st.toggled ? 'rgba(110, 231, 182, 0.2)' : 'rgba(255,255,255,0.05)';
+                ctx.beginPath();
+                ctx.roundRect(0, 0, st.w, st.h, st.h / 2);
+                ctx.fill();
+                const tx = st.toggled ? st.w - 18 : 18;
+                ctx.fillStyle = st.toggled ? '#6ee7b6' : '#8888aa';
+                for (let i = 0; i < N; i++) {
+                    vx[i] += ((tx + ox[i]) - px[i]) * 15 * dt;
+                    vy[i] += ((st.h / 2 + oy[i]) - py[i]) * 15 * dt;
+                    vx[i] *= 0.85;
+                    vy[i] *= 0.85;
+                    px[i] += vx[i] * dt;
+                    py[i] += vy[i] * dt;
+                    ctx.fillRect(px[i], py[i], 1.5, 1.5);
+                }
+            }
+        };
+    };
+
+    // 2. LIQUID TOGGLE (Metaball stretching effect)
+    const LiquidToggle = () => {
+        let knobX = 18;
+        return {
+            tick(ctx, dt, now, st) {
+                const tx = st.toggled ? st.w - 18 : 18;
+                knobX = lerp(knobX, tx, dt * 12);
+                const stretch = Math.abs(knobX - tx) * 0.5;
+
+                ctx.fillStyle = st.toggled ? 'rgba(110, 231, 182, 0.2)' : 'rgba(255,255,255,0.05)';
+                ctx.beginPath();
+                ctx.roundRect(0, 0, st.w, st.h, st.h / 2);
+                ctx.fill();
+
+                ctx.fillStyle = st.toggled ? '#6ee7b6' : '#8888aa';
+                ctx.beginPath();
+                ctx.ellipse(knobX, st.h / 2, 14 + stretch, 14 - stretch * 0.2, 0, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        };
+    };
+
+    // 3. NEON PULSE TOGGLE (Click sends shockwaves)
+    const NeonPulseToggle = () => {
+        let rings = [];
+        let knobX = 18;
+        return {
+            onToggle(checked) {
+                rings.push({r: 14, life: 1, x: checked ? 46 : 18});
+            },
+            tick(ctx, dt, now, st) {
+                knobX = lerp(knobX, st.toggled ? st.w - 18 : 18, dt * 15);
+                ctx.fillStyle = st.toggled ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255,255,255,0.05)';
+                ctx.beginPath();
+                ctx.roundRect(0, 0, st.w, st.h, st.h / 2);
+                ctx.fill();
+
+                for (let i = rings.length - 1; i >= 0; i--) {
+                    let r = rings[i];
+                    r.r += 100 * dt;
+                    r.life -= 2 * dt;
+                    if (r.life <= 0) {
+                        rings.splice(i, 1);
+                        continue;
+                    }
+                    ctx.strokeStyle = `rgba(56, 189, 248, ${r.life})`;
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(r.x, st.h / 2, r.r, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+                ctx.fillStyle = st.toggled ? '#38bdf8' : '#8888aa';
+                ctx.beginPath();
+                ctx.arc(knobX, st.h / 2, 14, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        };
+    };
+
+    // 4. MAGNETIC GHOST BUTTON (Follows pointer with physics)
+    const MagneticBtn = () => {
+        let bx = 0, by = 0, textScale = 1;
+        return {
+            onClick() {
+                textScale = 0.8;
+            },
+            tick(ctx, dt, now, st, ptr) {
+                const tx = st.hover ? clamp(ptr.x - st.w / 2, -15, 15) : 0;
+                const ty = st.hover ? clamp(ptr.y - st.h / 2, -15, 15) : 0;
+                bx = lerp(bx, tx, dt * 10);
+                by = lerp(by, ty, dt * 10);
+                textScale = lerp(textScale, 1, dt * 10);
+
+                ctx.translate(bx, by);
+                ctx.fillStyle = st.hover ? '#1e1e2f' : 'rgba(255,255,255,0.05)';
+                ctx.strokeStyle = st.hover ? '#a78bfa' : 'rgba(255,255,255,0.1)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.roundRect(0, 0, st.w, st.h, 8);
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.fillStyle = st.hover ? '#a78bfa' : '#e2e2f0';
+                ctx.font = '600 13px Space Grotesk';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.translate(st.w / 2, st.h / 2);
+                ctx.scale(textScale, textScale);
+                ctx.fillText('MAGNETIC', 0, 0);
+            }
+        };
+    };
+
+    // 5. SHATTER BUTTON (Click explodes into shards)
+    const ShatterBtn = () => {
+        let shards = [];
+        let visible = true;
+        let respawn = 0;
+        return {
+            onClick(x, y, st) {
+                if (!visible) return;
+                visible = false;
+                respawn = 1.5;
+                for (let i = 0; i < 30; i++) {
+                    shards.push({
+                        x: rand(0, st.w),
+                        y: rand(0, st.h),
+                        vx: rand(-150, 150),
+                        vy: rand(-150, 50),
+                        r: rand(0, 6),
+                        vr: rand(-5, 5),
+                        sz: rand(4, 12)
+                    });
+                }
+            },
+            tick(ctx, dt, now, st) {
+                if (respawn > 0) {
+                    respawn -= dt;
+                    if (respawn <= 0) visible = true;
+                }
+
+                if (visible) {
+                    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+                    ctx.beginPath();
+                    ctx.roundRect(0, 0, st.w, st.h, 8);
+                    ctx.fill();
+                    ctx.fillStyle = '#e2e2f0';
+                    ctx.font = '600 13px Space Grotesk';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('SHATTER', st.w / 2, st.h / 2);
+                }
+
+                ctx.fillStyle = 'rgba(255,255,255,0.5)';
+                for (let i = shards.length - 1; i >= 0; i--) {
+                    let s = shards[i];
+                    s.vy += 400 * dt;
+                    s.x += s.vx * dt;
+                    s.y += s.vy * dt;
+                    s.r += s.vr * dt;
+                    ctx.save();
+                    ctx.translate(s.x, s.y);
+                    ctx.rotate(s.r);
+                    ctx.fillRect(-s.sz / 2, -s.sz / 2, s.sz, s.sz);
+                    ctx.restore();
+                    if (s.y > st.h + 100) shards.splice(i, 1);
+                }
+            }
+        };
+    };
+
+    // 6. CONFETTI BUTTON (3D Tumbling burst)
+    const ConfettiBtn = () => {
+        let conf = [];
+        let scale = 1;
+        const cols = ['#6ee7b6', '#38bdf8', '#a78bfa', '#fbbf24', '#f43f5e'];
+        return {
+            onClick(x, y, st) {
+                scale = 0.8;
+                for (let i = 0; i < 40; i++) {
+                    const a = rand(Math.PI, Math.PI * 2);
+                    const v = rand(100, 300);
+                    conf.push({
+                        x: x,
+                        y: y,
+                        vx: Math.cos(a) * v,
+                        vy: Math.sin(a) * v,
+                        c: cols[Math.floor(rand(0, 5))],
+                        w: rand(4, 8),
+                        h: rand(8, 14),
+                        rx: rand(0, Math.PI),
+                        ry: rand(0, Math.PI),
+                        vrx: rand(5, 15),
+                        vry: rand(5, 15)
+                    });
+                }
+            },
+            tick(ctx, dt, now, st) {
+                scale = lerp(scale, 1, dt * 10);
+                ctx.translate(st.w / 2, st.h / 2);
+                ctx.scale(scale, scale);
+                ctx.translate(-st.w / 2, -st.h / 2);
+
+                ctx.fillStyle = '#DC143C';
+                ctx.beginPath();
+                ctx.roundRect(0, 0, st.w, st.h, 8);
+                ctx.fill();
+                ctx.fillStyle = '#fff';
+                ctx.font = '600 13px Space Grotesk';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('CONFETTI', st.w / 2, st.h / 2);
+
+                for (let i = conf.length - 1; i >= 0; i--) {
+                    let c = conf[i];
+                    c.vy += 300 * dt;
+                    c.x += c.vx * dt;
+                    c.y += c.vy * dt;
+                    c.rx += c.vrx * dt;
+                    c.ry += c.vry * dt;
+                    ctx.save();
+                    ctx.translate(c.x, c.y);
+                    ctx.rotate(c.rx);
+                    ctx.scale(1, Math.cos(c.ry));
+                    ctx.fillStyle = c.c;
+                    ctx.fillRect(-c.w / 2, -c.h / 2, c.w, c.h);
+                    ctx.restore();
+                    if (c.y > st.h + 100) conf.splice(i, 1);
+                }
+            }
+        };
+    };
+
+    // 7. GLITCH BUTTON (RGB Splitting on Hover)
+    const GlitchBtn = () => {
+        let g = 0;
+        return {
+            tick(ctx, dt, now, st) {
+                g = lerp(g, st.hover ? 1 : 0, dt * 10);
+                const drawBase = (ox, oy, color) => {
+                    ctx.fillStyle = color;
+                    ctx.beginPath();
+                    ctx.roundRect(ox, oy, st.w, st.h, 8);
+                    ctx.fill();
+                    ctx.fillStyle = '#fff';
+                    ctx.font = '600 13px Space Grotesk';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('GLITCH', st.w / 2 + ox, st.h / 2 + oy);
+                };
+                if (g > 0.01) {
+                    ctx.globalCompositeOperation = 'screen';
+                    const off = rand(2, 6) * g;
+                    if (rand(0, 1) > 0.5) {
+                        drawBase(-off, 0, '#ff0055');
+                        drawBase(off, 0, '#00ffcc');
+                    } else {
+                        drawBase(0, 0, 'rgba(255,255,255,0.1)');
+                    }
+                    ctx.globalCompositeOperation = 'source-over';
+                } else {
+                    drawBase(0, 0, 'rgba(255,255,255,0.05)');
+                }
+            }
+        };
+    };
+
+    // 8. PARTICLE SPARK SLIDER (Emits sparks based on drag velocity)
+    const SparkSlider = () => {
+        let sparks = [];
+        let lastV = 0.5;
+
+        return {
+            onDrag(val) {
+                // Use the slider's value delta instead of raw pointer speed
+                // This guarantees it fires consistently, even on slow drags
+                const delta = val - lastV;
+
+                if (Math.abs(delta) > 0.001) {
+                    const dir = Math.sign(delta); // 1 if right, -1 if left
+
+                    // Shoot sparks in the OPPOSITE direction of the drag
+                    for (let i = 0; i < 4; i++) {
+                        sparks.push({
+                            x: val * 180,
+                            y: 12,
+                            // Massive velocity values because we multiply by dt (0.016s)
+                            vx: -dir * rand(100, 300),
+                            vy: rand(-150, 50),
+                            life: 1
+                        });
+                    }
+                }
+                lastV = val;
+            },
+
+            tick(ctx, dt, now, st) {
+                // Draw background track
+                ctx.fillStyle = 'rgba(255,255,255,0.1)';
+                ctx.beginPath();
+                ctx.roundRect(0, 10, st.w, 4, 2);
+                ctx.fill();
+
+                // Draw filled track
+                const tx = st.val * st.w;
+                ctx.fillStyle = '#fbbf24';
+                ctx.beginPath();
+                ctx.roundRect(0, 10, tx, 4, 2);
+                ctx.fill();
+
+                // Draw thumb
+                ctx.beginPath();
+                ctx.arc(tx, 12, 10, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Render Sparks
+                ctx.globalCompositeOperation = 'screen';
+                for (let i = sparks.length - 1; i >= 0; i--) {
+                    let s = sparks[i];
+
+                    s.vy += 400 * dt; // Gravity pulling sparks down
+                    s.vx *= 0.95;     // Air friction
+
+                    s.x += s.vx * dt;
+                    s.y += s.vy * dt;
+                    s.life -= 2.0 * dt; // Fade out speed
+
+                    if (s.life <= 0) {
+                        sparks.splice(i, 1);
+                        continue;
+                    }
+
+                    ctx.fillStyle = `rgba(251, 191, 36, ${s.life})`;
+
+                    // Motion blur: Stretch the spark based on its velocity vector
+                    ctx.save();
+                    ctx.translate(s.x, s.y);
+                    ctx.rotate(Math.atan2(s.vy, s.vx));
+                    ctx.fillRect(0, -1, Math.max(3, Math.abs(s.vx) * 0.05), 2);
+                    ctx.restore();
+                }
+                ctx.globalCompositeOperation = 'source-over';
+            }
+        };
+    };
+
+    // 9. COSMIC VOID SLIDER (Thumb sucks in background dust)
+    const CosmicSlider = () => {
+        const N = 80;
+        const dust = Array.from({length: N}, () => ({x: rand(0, 180), y: rand(-10, 34), vx: 0, vy: 0}));
+        return {
+            tick(ctx, dt, now, st) {
+                ctx.fillStyle = 'rgba(255,255,255,0.05)';
+                ctx.beginPath();
+                ctx.roundRect(0, 10, st.w, 4, 2);
+                ctx.fill();
+                const tx = st.val * st.w;
+
+                ctx.fillStyle = '#fff';
+                for (let d of dust) {
+                    const dx = tx - d.x;
+                    const dy = 12 - d.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 40) {
+                        d.vx += (dx / dist) * 200 * dt;
+                        d.vy += (dy / dist) * 200 * dt;
+                    }
+                    d.vx *= 0.9;
+                    d.vy *= 0.9;
+                    d.x += d.vx * dt;
+                    d.y += d.vy * dt;
+                    if (dist < 5) {
+                        d.x = rand(0, st.w);
+                        d.y = rand(-20, 44);
+                        d.vx = 0;
+                        d.vy = 0;
+                    } // Respawn
+                    ctx.fillRect(d.x, d.y, 1, 1);
+                }
+
+                // Blackhole thumb
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#a78bfa';
+                ctx.fillStyle = '#000';
+                ctx.strokeStyle = '#a78bfa';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(tx, 12, 12, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+            }
+        };
+    };
+
+    // 10. LASER SLIDER (Energy beam traces track)
+    const LaserSlider = () => {
+        let t = 0;
+        return {
+            tick(ctx, dt, now, st) {
+                t += dt * 10;
+                ctx.fillStyle = 'rgba(255,255,255,0.05)';
+                ctx.beginPath();
+                ctx.roundRect(0, 10, st.w, 4, 2);
+                ctx.fill();
+                const tx = st.val * st.w;
+
+                // Laser beam
+                const g = ctx.createLinearGradient(0, 0, tx, 0);
+                g.addColorStop(0, 'transparent');
+                g.addColorStop(0.8, '#38bdf8');
+                g.addColorStop(1, '#fff');
+                ctx.fillStyle = g;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#38bdf8';
+                ctx.beginPath();
+                ctx.roundRect(0, 10, tx, 4, 2);
+                ctx.fill();
+
+                // Plasma thumb
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(tx, 12, 8 + Math.sin(t) * 2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        };
+    };
+
+    // ═══════════════════════════════════════════════════════════
+    //  MOUNTING
+    // ═══════════════════════════════════════════════════════════
+    const grid = document.getElementById('grid');
+    const configs = [
+        {title: 'Swarm Knob', type: 'toggle', recipe: SwarmToggle},
+        {title: 'Liquid Stretch', type: 'toggle', recipe: LiquidToggle},
+        {title: 'Neon Pulse', type: 'toggle', recipe: NeonPulseToggle},
+        {title: 'Magnetic Ghost', type: 'button', recipe: MagneticBtn},
+        {title: 'Shatter Physics', type: 'button', recipe: ShatterBtn},
+        {title: 'Confetti Burst', type: 'button', recipe: ConfettiBtn},
+        {title: 'RGB Glitch', type: 'button', recipe: GlitchBtn},
+        {title: 'Kinetic Sparks', type: 'slider', recipe: SparkSlider},
+        {title: 'Cosmic Void', type: 'slider', recipe: CosmicSlider},
+        {title: 'Laser Plasma', type: 'slider', recipe: LaserSlider}
+    ];
+
+    configs.forEach(cfg => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `<div class="card-title">${cfg.title}</div>`;
+        new UIController(card, cfg.type, cfg.title, cfg.recipe);
+        grid.appendChild(card);
+    });
+
+</script>
+</body>
+</html>

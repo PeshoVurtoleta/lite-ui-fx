@@ -1,0 +1,1247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>@zakkster/lite-ui-fx Vol. 3 — 20 Novel UI Recipes</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+          rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box
+        }
+
+        :root {
+            --bg: #020206;
+            --panel: rgba(10, 10, 18, .94);
+            --border: rgba(255, 255, 255, .06);
+            --text: #e2e2f0;
+            --dim: #9999b8;
+            --accent: #38bdf8
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Space Grotesk', sans-serif;
+            min-height: 100vh;
+            padding: 30px 16px 60px
+        }
+
+        .top {
+            text-align: center;
+            margin-bottom: 32px
+        }
+
+        .top h1 {
+            font-size: clamp(20px, 4vw, 30px);
+            font-weight: 700;
+            background: linear-gradient(135deg, #38bdf8, #6ee7b6, #fbbf24, #f472b6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent
+        }
+
+        .top p {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: #9999b8;
+            margin-top: 6px
+        }
+
+        .cat {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin: 36px auto 14px;
+            padding-left: 4px;
+            max-width: 1100px
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 18px;
+            max-width: 1100px;
+            margin: 0 auto
+        }
+
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 110px;
+            position: relative;
+            transition: border-color .2s
+        }
+
+        .card:hover {
+            border-color: rgba(255, 255, 255, .1)
+        }
+
+        .card-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px;
+            color: #9999b8;
+            margin-bottom: 8px;
+            text-align: center
+        }
+
+        .ui-wrap {
+            position: relative;
+            display: inline-block
+        }
+
+        .ui-wrap canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 1
+        }
+
+        .native {
+            position: relative;
+            z-index: 2;
+            opacity: 0;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            -webkit-appearance: none;
+            appearance: none;
+            padding: 0;
+            margin: 0;
+            font-family: 'Space Grotesk', sans-serif
+        }
+
+        .native::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 24px;
+            height: 24px;
+            cursor: grab
+        }
+
+        .native::-moz-range-thumb {
+            width: 24px;
+            height: 24px;
+            cursor: grab;
+            border: none;
+            background: transparent
+        }
+    </style>
+</head>
+<body>
+<div class="top">
+    <h1>lite-ui-fx — Vol. 3</h1>
+    <p>20 Novel Canvas UI Elements • 7 New Categories • Zero Dependencies</p>
+</div>
+<div id="app"></div>
+
+<script>
+    // ── CORE ──
+    const lerp = (a, b, t) => a + (b - a) * t, clamp = (v, a, b) => Math.max(a, Math.min(b, v)), easeOut = t => {
+        const f = t - 1;
+        return f * f * f + 1
+    };
+    const PI2 = Math.PI * 2;
+
+    class Random {
+        constructor(s = 42) {
+            this.seed = s;
+            this._s = s
+        }
+
+        next() {
+            let t = this._s += 0x6D2B79F5;
+            t = Math.imul(t ^ (t >>> 15), t | 1);
+            t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+        }
+
+        reset(s) {
+            if (s !== undefined) this.seed = s;
+            this._s = this.seed
+        }
+
+        range(a, b) {
+            return a + this.next() * (b - a)
+        }
+
+        pick(a) {
+            return a[Math.floor(this.next() * a.length)]
+        }
+    }
+
+    const _T = new Set;
+
+    function tick(n) {
+        const dt = tick._l ? Math.min(n - tick._l, 100) / 1e3 : .016;
+        tick._l = n;
+        for (const f of _T) f(dt, n);
+        requestAnimationFrame(tick)
+    }
+
+    tick._l = 0;
+    requestAnimationFrame(tick);
+
+    function rr(c, x, y, w, h, r) {
+        c.beginPath();
+        c.moveTo(x + r, y);
+        c.lineTo(x + w - r, y);
+        c.arcTo(x + w, y, x + w, y + r, r);
+        c.lineTo(x + w, y + h - r);
+        c.arcTo(x + w, y + h, x + w - r, y + h, r);
+        c.lineTo(x + r, y + h);
+        c.arcTo(x, y + h, x, y + h - r, r);
+        c.lineTo(x, y + r);
+        c.arcTo(x, y, x + r, y, r);
+        c.closePath()
+    }
+
+    function lbl(c, t, x, y, col = '#9999b8') {
+        c.fillStyle = col;
+        c.font = "500 9px 'JetBrains Mono',monospace";
+        c.textAlign = 'center';
+        c.fillText(t, x, y)
+    }
+
+    function fr(c, w, h, r) {
+        c.strokeStyle = 'rgba(110,231,182,.5)';
+        c.lineWidth = 2;
+        c.setLineDash([4, 3]);
+        rr(c, -2, -2, w + 4, h + 4, r + 2);
+        c.stroke();
+        c.setLineDash([])
+    }
+
+    // ── CONTROLLER ──
+    function mount(container, type, recipeFn, opts = {}) {
+        const w = opts.width || (type === 'button' ? 160 : type === 'slider' ? 200 : type === 'checkbox' ? 36 : 64);
+        const h = opts.height || (type === 'button' ? 48 : type === 'slider' ? 28 : type === 'checkbox' ? 36 : 64);
+        const pad = opts.padding || 40;
+        const dpr = devicePixelRatio || 1;
+        let el;
+        if (type === 'toggle' || type === 'checkbox') {
+            el = document.createElement('input');
+            el.type = 'checkbox';
+            el.setAttribute('role', 'switch');
+            el.className = 'native'
+        } else if (type === 'slider') {
+            el = document.createElement('input');
+            el.type = 'range';
+            el.min = '0';
+            el.max = '100';
+            el.value = '50';
+            el.className = 'native'
+        } else {
+            el = document.createElement('button');
+            el.type = 'button';
+            el.textContent = '';
+            el.className = 'native'
+        }
+        el.style.width = w + 'px';
+        el.style.height = h + 'px';
+        const cvs = document.createElement('canvas');
+        const cw = w + pad * 2, ch = h + pad * 2;
+        cvs.width = cw * dpr;
+        cvs.height = ch * dpr;
+        cvs.style.cssText = `position:absolute;top:0;left:0;width:${cw}px;height:${ch}px;transform:translate(-${pad}px,-${pad}px);pointer-events:none;z-index:1`;
+        const ctx = cvs.getContext('2d');
+        ctx.scale(dpr, dpr);
+        const wrap = document.createElement('div');
+        wrap.className = 'ui-wrap';
+        wrap.style.width = w + 'px';
+        wrap.style.height = h + 'px';
+        wrap.appendChild(el);
+        wrap.appendChild(cvs);
+        container.appendChild(wrap);
+        const st = {hover: false, active: false, focused: false, toggled: false, val: .5, w, h, padding: pad, dpr};
+        const ptr = {x: -999, y: -999, vx: 0, vy: 0};
+        const recipe = recipeFn();
+        if (recipe.init) recipe.init(ctx, w, h, pad);
+        const ac = new AbortController(), sig = ac.signal;
+        const up = e => {
+            const r = el.getBoundingClientRect();
+            ptr.vx = e.clientX - r.left - ptr.x;
+            ptr.vy = e.clientY - r.top - ptr.y;
+            ptr.x = e.clientX - r.left;
+            ptr.y = e.clientY - r.top
+        };
+        el.addEventListener('pointermove', up, {signal: sig});
+        el.addEventListener('pointerenter', e => {
+            st.hover = true;
+            up(e);
+            if (recipe.onHover) recipe.onHover(st, ptr)
+        }, {signal: sig});
+        el.addEventListener('pointerleave', () => {
+            st.hover = false;
+            if (recipe.onLeave) recipe.onLeave(st, ptr)
+        }, {signal: sig});
+        el.addEventListener('pointerdown', e => {
+            st.active = true;
+            up(e);
+            if (recipe.onClick) recipe.onClick(ptr.x, ptr.y, st)
+        }, {signal: sig});
+        el.addEventListener('pointerup', () => {
+            st.active = false
+        }, {signal: sig});
+        el.addEventListener('focus', () => {
+            st.focused = true
+        }, {signal: sig});
+        el.addEventListener('blur', () => {
+            st.focused = false
+        }, {signal: sig});
+        if (type === 'toggle' || type === 'checkbox') el.addEventListener('change', () => {
+            st.toggled = el.checked;
+            if (recipe.onToggle) recipe.onToggle(st.toggled, st)
+        }, {signal: sig});
+        if (type === 'slider') el.addEventListener('input', () => {
+            st.val = el.value / 100;
+            if (recipe.onDrag) recipe.onDrag(st.val, ptr.vx, st)
+        }, {signal: sig});
+        const fn = (dt, now) => {
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, cw, ch);
+            ctx.save();
+            ctx.translate(pad, pad);
+            recipe.tick(ctx, dt, now, st, ptr);
+            ctx.restore()
+        };
+        _T.add(fn);
+        return {
+            el, destroy() {
+                ac.abort();
+                _T.delete(fn);
+                if (recipe.destroy) recipe.destroy();
+                wrap.remove()
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  20 RECIPES
+    // ═══════════════════════════════════════════════════════════
+
+    // ── KNOBS ──
+    const VolumeKnob = () => {
+        let dv = 0;
+        return {
+            tick(c, dt, now, s) {
+                dv = lerp(dv, s.val, dt * 12);
+                const cx = s.w / 2, cy = s.h / 2, R = Math.min(cx, cy) - 4, sA = -Math.PI * .75, eA = Math.PI * .75,
+                    range = eA - sA;
+                c.strokeStyle = 'rgba(255,255,255,.06)';
+                c.lineWidth = 4;
+                c.beginPath();
+                c.arc(cx, cy, R, sA, eA);
+                c.stroke();
+                const vA = sA + dv * range;
+                const g = c.createLinearGradient(0, s.h, s.w, 0);
+                g.addColorStop(0, '#6ee7b6');
+                g.addColorStop(1, '#38bdf8');
+                c.strokeStyle = g;
+                c.lineWidth = 4;
+                c.beginPath();
+                c.arc(cx, cy, R, sA, vA);
+                c.stroke();
+                for (let i = 0; i <= 10; i++) {
+                    const a = sA + i / 10 * range, inner = R - 6, outer = R + 2;
+                    c.strokeStyle = i / 10 <= dv ? 'rgba(110,231,182,.5)' : 'rgba(255,255,255,.08)';
+                    c.lineWidth = 1;
+                    c.beginPath();
+                    c.moveTo(cx + Math.cos(a) * inner, cy + Math.sin(a) * inner);
+                    c.lineTo(cx + Math.cos(a) * outer, cy + Math.sin(a) * outer);
+                    c.stroke()
+                }
+                c.fillStyle = '#fff';
+                c.beginPath();
+                c.arc(cx + Math.cos(vA) * (R - 12), cy + Math.sin(vA) * (R - 12), 3, 0, PI2);
+                c.fill();
+                c.fillStyle = 'rgba(255,255,255,.04)';
+                c.beginPath();
+                c.arc(cx, cy, R * .4, 0, PI2);
+                c.fill();
+                c.fillStyle = '#e2e2f0';
+                c.font = "700 14px 'JetBrains Mono',monospace";
+                c.textAlign = 'center';
+                c.textBaseline = 'middle';
+                c.fillText(Math.round(dv * 100), cx, cy);
+                lbl(c, 'VOLUME', cx, s.h + 10);
+                if (s.focused) fr(c, s.w, s.h, s.h / 2)
+            }
+        }
+    };
+
+    const CompassKnob = () => {
+        let nA = 0;
+        return {
+            tick(c, dt, now, s) {
+                const tA = s.val * PI2;
+                nA = lerp(nA, tA, dt * 8);
+                const cx = s.w / 2, cy = s.h / 2, R = Math.min(cx, cy) - 4;
+                c.strokeStyle = 'rgba(255,255,255,.06)';
+                c.lineWidth = 2;
+                c.beginPath();
+                c.arc(cx, cy, R, 0, PI2);
+                c.stroke();
+                const dirs = ['N', 'E', 'S', 'W'], cols = ['#ff6b6b', '#9999b8', '#9999b8', '#9999b8'];
+                for (let i = 0; i < 4; i++) {
+                    const a = -Math.PI / 2 + i * Math.PI / 2;
+                    c.fillStyle = cols[i];
+                    c.font = "600 9px 'JetBrains Mono',monospace";
+                    c.textAlign = 'center';
+                    c.textBaseline = 'middle';
+                    c.fillText(dirs[i], cx + Math.cos(a) * (R - 10), cy + Math.sin(a) * (R - 10))
+                }
+                c.save();
+                c.translate(cx, cy);
+                c.rotate(nA - Math.PI / 2);
+                c.fillStyle = '#ff6b6b';
+                c.beginPath();
+                c.moveTo(0, -R + 18);
+                c.lineTo(-4, 4);
+                c.lineTo(4, 4);
+                c.closePath();
+                c.fill();
+                c.fillStyle = 'rgba(255,255,255,.15)';
+                c.beginPath();
+                c.moveTo(0, R - 18);
+                c.lineTo(-4, -4);
+                c.lineTo(4, -4);
+                c.closePath();
+                c.fill();
+                c.restore();
+                c.fillStyle = '#333';
+                c.beginPath();
+                c.arc(cx, cy, 4, 0, PI2);
+                c.fill();
+                lbl(c, Math.round(s.val * 360) + '°', cx, s.h + 10);
+                if (s.focused) fr(c, s.w, s.h, s.h / 2)
+            }
+        }
+    };
+
+    // ── PROGRESS ──
+    const RingProgress = () => {
+        const rng = new Random(42);
+        let dv = 0, sp = [];
+        return {
+            tick(c, dt, now, s) {
+                dv = lerp(dv, s.val, dt * 6);
+                const cx = s.w / 2, cy = s.h / 2, R = Math.min(cx, cy) - 6;
+                c.strokeStyle = 'rgba(255,255,255,.06)';
+                c.lineWidth = 6;
+                c.beginPath();
+                c.arc(cx, cy, R, 0, PI2);
+                c.stroke();
+                const a = -Math.PI / 2, ea = a + dv * PI2;
+                const g = c.createConicGradient(a, cx, cy);
+                g.addColorStop(0, '#a78bfa');
+                g.addColorStop(dv * .95, '#6ee7b6');
+                g.addColorStop(1, 'rgba(110,231,182,.2)');
+                c.strokeStyle = g;
+                c.lineWidth = 6;
+                c.beginPath();
+                c.arc(cx, cy, R, a, ea);
+                c.stroke();
+                if (dv > .02) {
+                    const tx = cx + Math.cos(ea) * R, ty = cy + Math.sin(ea) * R;
+                    if (sp.length < 20) sp.push({x: tx, y: ty, vx: rng.range(-20, 20), vy: rng.range(-20, 20), life: 1})
+                }
+                for (let i = sp.length - 1; i >= 0; i--) {
+                    const p = sp[i];
+                    p.x += p.vx * dt;
+                    p.y += p.vy * dt;
+                    p.life -= 2 * dt;
+                    if (p.life <= 0) {
+                        sp.splice(i, 1);
+                        continue
+                    }
+                    c.fillStyle = `rgba(110,231,182,${p.life})`;
+                    c.beginPath();
+                    c.arc(p.x, p.y, 1.5, 0, PI2);
+                    c.fill()
+                }
+                c.fillStyle = '#e2e2f0';
+                c.font = "700 16px 'JetBrains Mono',monospace";
+                c.textAlign = 'center';
+                c.textBaseline = 'middle';
+                c.fillText(Math.round(dv * 100) + '%', cx, cy);
+                if (s.focused) fr(c, s.w, s.h, s.h / 2)
+            }
+        }
+    };
+
+    const BatteryGauge = () => {
+        let dv = 0;
+        return {
+            tick(c, dt, now, s) {
+                dv = lerp(dv, s.val, dt * 8);
+                const bw = s.w - 16, bh = s.h - 12, bx = 8, by = 6;
+                c.strokeStyle = 'rgba(255,255,255,.15)';
+                c.lineWidth = 2;
+                rr(c, bx, by, bw, bh, 4);
+                c.stroke();
+                c.fillStyle = 'rgba(255,255,255,.15)';
+                c.fillRect(bx + bw + 1, by + bh / 2 - 4, 4, 8);
+                const fW = Math.max(0, (bw - 6) * dv), col = dv < .2 ? '#ff6b6b' : dv < .5 ? '#fbbf24' : '#6ee7b6';
+                c.fillStyle = col;
+                rr(c, bx + 3, by + 3, fW, bh - 6, 2);
+                c.fill();
+                if (dv > .8) {
+                    const p = Math.sin(now / 200) * .3 + .7;
+                    c.shadowBlur = 8 * p;
+                    c.shadowColor = col;
+                    rr(c, bx + 3, by + 3, fW, bh - 6, 2);
+                    c.fill();
+                    c.shadowBlur = 0
+                }
+                if (dv < .15 && ((now / 500 | 0) % 2 === 0)) {
+                    c.fillStyle = 'rgba(255,80,80,.15)';
+                    rr(c, bx, by, bw, bh, 4);
+                    c.fill()
+                }
+                c.fillStyle = '#e2e2f0';
+                c.font = "600 10px 'JetBrains Mono',monospace";
+                c.textAlign = 'center';
+                c.textBaseline = 'middle';
+                c.fillText(Math.round(dv * 100) + '%', bx + bw / 2, by + bh / 2);
+                if (s.focused) fr(c, s.w + 4, s.h, 4)
+            }
+        }
+    };
+
+    const SignalMeter = () => {
+        let bars = [0, 0, 0, 0, 0];
+        return {
+            tick(c, dt, now, s) {
+                const lev = Math.ceil(s.val * 5);
+                for (let i = 0; i < 5; i++) bars[i] = lerp(bars[i], i < lev ? 1 : 0, dt * 10);
+                const bw = 8, gap = 4, total = 5 * (bw + gap) - gap, ox = (s.w - total) / 2;
+                for (let i = 0; i < 5; i++) {
+                    const mH = 8 + i * 6, h = mH * bars[i] + 2, x = ox + i * (bw + gap), y = s.h - 6 - h,
+                        act = bars[i] > .5;
+                    c.fillStyle = act ? (s.val > .6 ? '#6ee7b6' : s.val > .3 ? '#fbbf24' : '#ff6b6b') : 'rgba(255,255,255,.06)';
+                    rr(c, x, y, bw, h, 2);
+                    c.fill()
+                }
+                lbl(c, lev + '/5', s.w / 2, s.h + 10, s.val > .6 ? '#6ee7b6' : '#9999b8');
+                if (s.focused) fr(c, s.w, s.h, 4)
+            }
+        }
+    };
+
+    // ── CONTROLS ──
+    const PillTabs = () => {
+        let ix = 0, iw = 0, sel = 0;
+        const labs = ['Alpha', 'Beta', 'Gamma'];
+        return {
+            onClick(x, y, s) {
+                sel = clamp(Math.floor(x / (s.w / 3)), 0, 2)
+            }, tick(c, dt, now, s) {
+                const tw = s.w / 3;
+                ix = lerp(ix, sel * tw, dt * 12);
+                iw = lerp(iw, tw, dt * 12);
+                c.fillStyle = 'rgba(255,255,255,.03)';
+                rr(c, 0, 0, s.w, s.h, s.h / 2);
+                c.fill();
+                c.fillStyle = 'rgba(167,139,250,.12)';
+                c.strokeStyle = 'rgba(167,139,250,.25)';
+                c.lineWidth = 1;
+                rr(c, ix + 2, 2, iw - 4, s.h - 4, s.h / 2 - 2);
+                c.fill();
+                c.stroke();
+                c.font = "600 11px 'Space Grotesk',sans-serif";
+                c.textAlign = 'center';
+                c.textBaseline = 'middle';
+                for (let i = 0; i < 3; i++) {
+                    c.fillStyle = i === sel ? '#c4b5fd' : '#9999b8';
+                    c.fillText(labs[i], tw * i + tw / 2, s.h / 2)
+                }
+                if (s.focused) fr(c, s.w, s.h, s.h / 2)
+            }
+        }
+    };
+
+    const Stepper = () => {
+        let cnt = 0, dc = 0, fd = 0, ft = 0;
+        return {
+            onClick(x, y, s) {
+                if (x < s.w * .33) {
+                    cnt = Math.max(0, cnt - 1);
+                    fd = -1
+                } else if (x > s.w * .66) {
+                    cnt++;
+                    fd = 1
+                }
+                ft = .3
+            }, tick(c, dt, now, s) {
+                dc = lerp(dc, cnt, dt * 10);
+                ft = Math.max(0, ft - dt);
+                c.fillStyle = 'rgba(255,255,255,.04)';
+                rr(c, 0, 0, s.w, s.h, 10);
+                c.fill();
+                const t = s.w / 3;
+                c.fillStyle = fd === -1 && ft > 0 ? 'rgba(255,100,100,.15)' : 'rgba(255,255,255,.03)';
+                rr(c, 2, 2, t - 4, s.h - 4, 8);
+                c.fill();
+                c.fillStyle = '#ff6b6b';
+                c.font = "700 18px 'JetBrains Mono',monospace";
+                c.textAlign = 'center';
+                c.textBaseline = 'middle';
+                c.fillText('−', t / 2, s.h / 2);
+                c.fillStyle = fd === 1 && ft > 0 ? 'rgba(110,231,182,.15)' : 'rgba(255,255,255,.03)';
+                rr(c, t * 2 + 2, 2, t - 4, s.h - 4, 8);
+                c.fill();
+                c.fillStyle = '#6ee7b6';
+                c.fillText('+', t * 2 + t / 2, s.h / 2);
+                c.fillStyle = '#e2e2f0';
+                c.font = "700 20px 'JetBrains Mono',monospace";
+                c.fillText(Math.round(dc), s.w / 2, s.h / 2);
+                if (s.focused) fr(c, s.w, s.h, 10)
+            }
+        }
+    };
+
+    const RadioOrbit = () => {
+        let sg = new Float32Array(4);
+        const nm = ['A', 'B', 'C', 'D'], cl = ['#ff6b6b', '#fbbf24', '#6ee7b6', '#38bdf8'];
+        return {
+            tick(c, dt, now, s) {
+                const sel = Math.round(s.val * 3), cx = s.w / 2, cy = s.h / 2, R = Math.min(cx, cy) - 12;
+                c.fillStyle = 'rgba(255,255,255,.03)';
+                c.beginPath();
+                c.arc(cx, cy, 8, 0, PI2);
+                c.fill();
+                for (let i = 0; i < 4; i++) {
+                    const a = -Math.PI / 2 + i * Math.PI / 2, ox = cx + Math.cos(a) * R, oy = cy + Math.sin(a) * R,
+                        act = i === sel;
+                    sg[i] = lerp(sg[i], act ? 1 : 0, dt * 10);
+                    c.strokeStyle = `rgba(255,255,255,${.03 + sg[i] * .05})`;
+                    c.lineWidth = 1;
+                    c.beginPath();
+                    c.moveTo(cx, cy);
+                    c.lineTo(ox, oy);
+                    c.stroke();
+                    const sz = 6 + sg[i] * 4;
+                    c.fillStyle = act ? cl[i] : 'rgba(255,255,255,.06)';
+                    c.beginPath();
+                    c.arc(ox, oy, sz, 0, PI2);
+                    c.fill();
+                    if (act) {
+                        c.strokeStyle = cl[i];
+                        c.lineWidth = 1;
+                        c.beginPath();
+                        c.arc(ox, oy, sz + 3, 0, PI2);
+                        c.stroke()
+                    }
+                    c.fillStyle = act ? '#fff' : '#9999b8';
+                    c.font = "600 9px 'JetBrains Mono',monospace";
+                    c.textAlign = 'center';
+                    c.textBaseline = 'middle';
+                    c.fillText(nm[i], ox, oy)
+                }
+                lbl(c, 'OPTION ' + nm[sel], cx, s.h + 10, cl[sel]);
+                if (s.focused) fr(c, s.w, s.h, 4)
+            }
+        }
+    };
+
+    // ── INDICATORS ──
+    const PasswordStrength = () => {
+        let sg = [0, 0, 0, 0];
+        const labs = ['WEAK', 'FAIR', 'GOOD', 'STRONG'], cls = ['#ff6b6b', '#fbbf24', '#38bdf8', '#6ee7b6'];
+        return {
+            tick(c, dt, now, s) {
+                const lev = Math.ceil(s.val * 4);
+                for (let i = 0; i < 4; i++) sg[i] = lerp(sg[i], i < lev ? 1 : 0, dt * 10);
+                const sw = (s.w - 12) / 4;
+                for (let i = 0; i < 4; i++) {
+                    const x = 2 + i * (sw + 2);
+                    c.strokeStyle = 'rgba(255,255,255,.04)';
+                    c.lineWidth = 1;
+                    rr(c, x, s.h / 2 - 4, sw, 8, 3);
+                    c.stroke();
+                    c.fillStyle = sg[i] > .5 ? cls[clamp(lev - 1, 0, 3)] : 'rgba(255,255,255,.06)';
+                    rr(c, x, s.h / 2 - 4, Math.max(2, sw * sg[i]), 8, 3);
+                    c.fill()
+                }
+                const idx = clamp(lev - 1, 0, 3);
+                lbl(c, lev > 0 ? labs[idx] : 'NONE', s.w / 2, s.h / 2 + 16, lev > 0 ? cls[idx] : '#666');
+                if (s.focused) fr(c, s.w, s.h, 4)
+            }
+        }
+    };
+
+    const WaterLevel = () => {
+        let dv = 0, wp = 0;
+        return {
+            tick(c, dt, now, s) {
+                dv = lerp(dv, s.val, dt * 4);
+                wp += dt * 3;
+                const bx = 4, by = 4, bw = s.w - 8, bh = s.h - 8;
+                c.strokeStyle = 'rgba(255,255,255,.1)';
+                c.lineWidth = 1.5;
+                rr(c, bx, by, bw, bh, 6);
+                c.stroke();
+                const wy = by + bh - (bh * dv);
+                c.save();
+                c.beginPath();
+                rr(c, bx + 1, by + 1, bw - 2, bh - 2, 5);
+                c.clip();
+                const col = dv > .7 ? 'rgba(56,189,248,.3)' : dv > .3 ? 'rgba(110,231,182,.25)' : 'rgba(251,191,36,.2)';
+                c.fillStyle = col;
+                c.beginPath();
+                c.moveTo(bx, by + bh);
+                for (let x = 0; x <= bw; x++) {
+                    c.lineTo(bx + x, wy + Math.sin(wp + x * .08) * 3 + Math.sin(wp * 1.5 + x * .12) * 2)
+                }
+                c.lineTo(bx + bw, by + bh);
+                c.closePath();
+                c.fill();
+                c.fillStyle = dv > .7 ? 'rgba(56,189,248,.15)' : dv > .3 ? 'rgba(110,231,182,.1)' : 'rgba(251,191,36,.08)';
+                c.fillRect(bx, wy + 5, bw, bh);
+                c.restore();
+                c.fillStyle = '#e2e2f0';
+                c.font = "700 12px 'JetBrains Mono',monospace";
+                c.textAlign = 'center';
+                c.textBaseline = 'middle';
+                c.fillText(Math.round(dv * 100) + '%', s.w / 2, s.h / 2);
+                if (s.focused) fr(c, s.w, s.h, 6)
+            }
+        }
+    };
+
+    const HeatMap = () => {
+        const rng = new Random(42);
+        const N = 15, th = new Float32Array(N), vl = new Float32Array(N);
+        return {
+            init() {
+                for (let i = 0; i < N; i++) th[i] = rng.range(0, 1)
+            }, tick(c, dt, now, s) {
+                const cols = 5, rows = 3, gap = 3, cw = (s.w - gap * (cols - 1)) / cols,
+                    ch = (s.h - gap * (rows - 1)) / rows;
+                for (let i = 0; i < N; i++) {
+                    vl[i] = lerp(vl[i], s.val >= th[i] ? 1 : 0, dt * 6);
+                    const col = i % cols, row = (i / cols) | 0, x = col * (cw + gap), y = row * (ch + gap), h = vl[i];
+                    const r = Math.round(100 + h * 155), g = Math.round(60 + h * 20), b = Math.round(60 - h * 40);
+                    c.fillStyle = h > .1 ? `rgba(${r},${g},${b},${.15 + h * .4})` : 'rgba(255,255,255,.04)';
+                    rr(c, x, y, cw, ch, 3);
+                    c.fill()
+                }
+                lbl(c, Math.round(s.val * 100) + '%', s.w / 2, s.h + 10);
+                if (s.focused) fr(c, s.w, s.h, 3)
+            }
+        }
+    };
+
+    // ── MOOD ──
+    const DayNightToggle = () => {
+        const rng = new Random(42);
+        let t = 0, stars = [];
+        return {
+            init(ctx, w, h) {
+                for (let i = 0; i < 30; i++) stars.push({
+                    x: rng.range(4, w - 4),
+                    y: rng.range(4, h - 4),
+                    tw: rng.range(0, PI2)
+                })
+            }, tick(c, dt, now, s) {
+                t = lerp(t, s.toggled ? 1 : 0, dt * 6);
+                const sR = Math.round(lerp(135, 10, t)), sG = Math.round(lerp(206, 10, t)),
+                    sB = Math.round(lerp(250, 30, t));
+                c.fillStyle = `rgb(${sR},${sG},${sB})`;
+                rr(c, 0, 0, s.w, s.h, s.h / 2);
+                c.fill();
+                if (t > .3) {
+                    for (const st of stars) {
+                        const tw = Math.sin(now / 400 + st.tw) * .5 + .5;
+                        c.fillStyle = `rgba(255,255,255,${(t - .3) / .7 * tw * .6})`;
+                        c.fillRect(st.x, st.y, 1, 1)
+                    }
+                }
+                const ox = lerp(18, s.w - 18, t);
+                if (t < .5) {
+                    c.fillStyle = '#fbbf24';
+                    c.beginPath();
+                    c.arc(ox, s.h / 2, 10, 0, PI2);
+                    c.fill();
+                    c.strokeStyle = `rgba(251,191,36,${.3 * (1 - t * 2)})`;
+                    c.lineWidth = 1;
+                    for (let i = 0; i < 8; i++) {
+                        const a = now / 800 + i * Math.PI / 4;
+                        c.beginPath();
+                        c.moveTo(ox + Math.cos(a) * 12, s.h / 2 + Math.sin(a) * 12);
+                        c.lineTo(ox + Math.cos(a) * 16, s.h / 2 + Math.sin(a) * 16);
+                        c.stroke()
+                    }
+                } else {
+                    c.fillStyle = '#d4d4e8';
+                    c.beginPath();
+                    c.arc(ox, s.h / 2, 10, 0, PI2);
+                    c.fill();
+                    c.fillStyle = `rgba(0,0,0,${(t - .5) * 2 * .15})`;
+                    c.beginPath();
+                    c.arc(ox - 3, s.h / 2 - 2, 3, 0, PI2);
+                    c.fill();
+                    c.beginPath();
+                    c.arc(ox + 4, s.h / 2 + 3, 2, 0, PI2);
+                    c.fill()
+                }
+                lbl(c, s.toggled ? 'NIGHT' : 'DAY', s.w / 2, s.h + 14, s.toggled ? '#9999b8' : '#fbbf24');
+                if (s.focused) fr(c, s.w, s.h, s.h / 2)
+            }
+        }
+    };
+
+    const ReactionPicker = () => {
+        let sz = new Float32Array(5);
+        const emo = ['😐', '🙂', '😊', '😄', '🤩'], cls = ['#9999b8', '#fbbf24', '#fb923c', '#f472b6', '#ff6b6b'],
+            lbs = ['MEH', 'OK', 'NICE', 'GREAT', 'LOVE'];
+        return {
+            tick(c, dt, now, s, ptr) {
+                const gap = s.w / 5, hi = s.hover ? clamp(Math.floor(ptr.x / gap), 0, 4) : -1;
+                for (let i = 0; i < 5; i++) {
+                    sz[i] = lerp(sz[i], i === hi ? 16 : 10, dt * 12);
+                    const cx = gap * i + gap / 2, cy = s.h / 2;
+                    c.fillStyle = i === hi ? `${cls[i]}30` : 'rgba(255,255,255,.04)';
+                    c.beginPath();
+                    c.arc(cx, cy - sz[i] + 10, sz[i], 0, PI2);
+                    c.fill();
+                    c.font = `${Math.round(sz[i] * 1.2)}px sans-serif`;
+                    c.textAlign = 'center';
+                    c.textBaseline = 'middle';
+                    c.fillText(emo[i], cx, cy - sz[i] + 10)
+                }
+                if (hi >= 0) {
+                    const sx = gap * hi + gap / 2;
+                    c.fillStyle = cls[hi];
+                    c.fillRect(sx - 10, s.h - 4, 20, 2)
+                }
+                lbl(c, hi >= 0 ? lbs[hi] : 'REACT', s.w / 2, s.h + 10, hi >= 0 ? cls[hi] : '#9999b8');
+                if (s.focused) fr(c, s.w, s.h, 4)
+            }
+        }
+    };
+
+    const NotificationBell = () => {
+        let cnt = 0, ba = 0, bv = 0, bs = 0;
+        return {
+            onClick() {
+                cnt++;
+                bv = 6;
+                bs = 1.5
+            }, tick(c, dt, now, s) {
+                bv += (0 - ba) * 20 * dt;
+                bv *= .9;
+                ba += bv * dt;
+                bs = lerp(bs, 1, dt * 8);
+                const cx = s.w / 2, cy = s.h / 2;
+                c.save();
+                c.translate(cx, cy - 4);
+                c.rotate(ba * .3);
+                c.fillStyle = '#fbbf24';
+                c.beginPath();
+                c.moveTo(-10, 0);
+                c.quadraticCurveTo(-12, -14, 0, -18);
+                c.quadraticCurveTo(12, -14, 10, 0);
+                c.lineTo(-10, 0);
+                c.fill();
+                c.beginPath();
+                c.arc(0, 3, 3, 0, PI2);
+                c.fill();
+                c.restore();
+                if (cnt > 0) {
+                    const bx = cx + 10, by = cy - 16;
+                    c.save();
+                    c.translate(bx, by);
+                    c.scale(bs, bs);
+                    c.fillStyle = '#ff6b6b';
+                    c.beginPath();
+                    c.arc(0, 0, 8, 0, PI2);
+                    c.fill();
+                    c.fillStyle = '#fff';
+                    c.font = "700 8px 'JetBrains Mono',monospace";
+                    c.textAlign = 'center';
+                    c.textBaseline = 'middle';
+                    c.fillText(cnt > 99 ? '99+' : String(cnt), 0, 0);
+                    c.restore()
+                }
+                lbl(c, 'NOTIFY', cx, s.h + 10);
+                if (s.focused) fr(c, s.w, s.h, 4)
+            }
+        }
+    };
+
+    // ── FEEDBACK ──
+    const TypewriterField = () => {
+        const txt = 'Hello World';
+        let ci = 0, tm = 0, cb = 0, typing = false;
+        return {
+            onToggle(ch) {
+                typing = ch;
+                if (ch) {
+                    ci = 0;
+                    tm = 0
+                }
+            }, tick(c, dt, now, s) {
+                cb = (cb + dt * 3) % 2;
+                if (typing && ci < txt.length) {
+                    tm += dt;
+                    if (tm > .08) {
+                        tm = 0;
+                        ci++
+                    }
+                }
+                c.fillStyle = 'rgba(255,255,255,.04)';
+                rr(c, 0, 0, s.w, s.h, 6);
+                c.fill();
+                c.strokeStyle = 'rgba(255,255,255,.06)';
+                c.lineWidth = 1;
+                rr(c, 0, 0, s.w, s.h, 6);
+                c.stroke();
+                const d = txt.substring(0, ci);
+                c.fillStyle = '#6ee7b6';
+                c.font = "500 13px 'JetBrains Mono',monospace";
+                c.textAlign = 'left';
+                c.textBaseline = 'middle';
+                c.fillText(d, 8, s.h / 2);
+                if (cb < 1) {
+                    const tw = c.measureText(d).width;
+                    c.fillStyle = '#6ee7b6';
+                    c.fillRect(9 + tw, s.h / 2 - 8, 1.5, 16)
+                }
+                lbl(c, typing ? 'TYPING...' : 'TOGGLE TO TYPE', s.w / 2, s.h + 10, typing ? '#6ee7b6' : '#8888aa');
+                if (s.focused) fr(c, s.w, s.h, 6)
+            }
+        }
+    };
+
+    const SoundWaveBtn = () => {
+        let int = 0, ph = 0;
+        return {
+            onClick() {
+                int = 1
+            }, tick(c, dt, now, s) {
+                int = lerp(int, 0, dt * 2);
+                ph += dt * 12;
+                c.fillStyle = 'rgba(255,255,255,.04)';
+                rr(c, 0, 0, s.w, s.h, 10);
+                c.fill();
+                const cy = s.h / 2, amp = 10 * int;
+                c.strokeStyle = int > .1 ? '#f472b6' : 'rgba(255,255,255,.08)';
+                c.lineWidth = 2;
+                c.beginPath();
+                for (let x = 0; x <= s.w; x++) {
+                    const y = cy + Math.sin(ph + x * .1) * amp * Math.sin(x / s.w * Math.PI);
+                    x === 0 ? c.moveTo(x, y) : c.lineTo(x, y)
+                }
+                c.stroke();
+                if (int < .05) {
+                    c.strokeStyle = 'rgba(255,255,255,.06)';
+                    c.lineWidth = 1;
+                    c.beginPath();
+                    c.moveTo(10, cy);
+                    c.lineTo(s.w - 10, cy);
+                    c.stroke()
+                }
+                c.fillStyle = int > .1 ? '#f472b6' : '#9999b8';
+                c.font = "600 11px 'Space Grotesk',sans-serif";
+                c.textAlign = 'center';
+                c.textBaseline = 'middle';
+                c.fillText(int > .1 ? '● REC' : 'RECORD', s.w / 2, s.h / 2);
+                if (s.focused) fr(c, s.w, s.h, 10)
+            }
+        }
+    };
+
+    const UploadProgress = () => {
+        let dv = 0;
+        return {
+            tick(c, dt, now, s) {
+                dv = lerp(dv, s.val, dt * 6);
+                const cx = s.w / 2, fw = 30, fh = 38, fx = cx - fw / 2, fy = (s.h - fh) / 2;
+                c.strokeStyle = 'rgba(255,255,255,.15)';
+                c.lineWidth = 1.5;
+                c.beginPath();
+                c.moveTo(fx, fy);
+                c.lineTo(fx + fw - 8, fy);
+                c.lineTo(fx + fw, fy + 8);
+                c.lineTo(fx + fw, fy + fh);
+                c.lineTo(fx, fy + fh);
+                c.closePath();
+                c.stroke();
+                c.beginPath();
+                c.moveTo(fx + fw - 8, fy);
+                c.lineTo(fx + fw - 8, fy + 8);
+                c.lineTo(fx + fw, fy + 8);
+                c.stroke();
+                const fH = fh * dv, col = dv >= 1 ? '#6ee7b6' : '#38bdf8';
+                c.fillStyle = col + '30';
+                c.save();
+                c.beginPath();
+                c.rect(fx + 1, fy + fh - fH, fw - 1, fH);
+                c.clip();
+                c.beginPath();
+                c.moveTo(fx, fy);
+                c.lineTo(fx + fw - 8, fy);
+                c.lineTo(fx + fw, fy + 8);
+                c.lineTo(fx + fw, fy + fh);
+                c.lineTo(fx, fy + fh);
+                c.closePath();
+                c.fill();
+                c.restore();
+                c.strokeStyle = col;
+                c.lineWidth = 2;
+                c.lineCap = 'round';
+                if (dv >= .99) {
+                    c.beginPath();
+                    c.moveTo(cx - 5, fy + fh / 2);
+                    c.lineTo(cx - 1, fy + fh / 2 + 5);
+                    c.lineTo(cx + 6, fy + fh / 2 - 4);
+                    c.stroke()
+                } else {
+                    c.beginPath();
+                    c.moveTo(cx, fy + fh / 2 + 5);
+                    c.lineTo(cx, fy + fh / 2 - 5);
+                    c.stroke();
+                    c.beginPath();
+                    c.moveTo(cx - 4, fy + fh / 2 - 1);
+                    c.lineTo(cx, fy + fh / 2 - 5);
+                    c.lineTo(cx + 4, fy + fh / 2 - 1);
+                    c.stroke()
+                }
+                c.lineCap = 'butt';
+                lbl(c, dv >= .99 ? 'DONE' : Math.round(dv * 100) + '%', cx, s.h + 10, dv >= .99 ? '#6ee7b6' : '#9999b8');
+                if (s.focused) fr(c, s.w, s.h, 4)
+            }
+        }
+    };
+
+    // ── FUN ──
+    const ScratchReveal = () => {
+        const rng = new Random(42);
+        let rev = 0, sc = [];
+        return {
+            onDrag(v, vx) {
+                if (Math.abs(vx) > .5) {
+                    for (let i = 0; i < 3; i++) sc.push({x: v * 200, y: rng.range(2, 26), r: rng.range(6, 14)});
+                    rev = Math.min(1, rev + .015)
+                }
+            }, tick(c, dt, now, s) {
+                c.fillStyle = 'rgba(110,231,182,.08)';
+                rr(c, 0, 0, s.w, s.h, 8);
+                c.fill();
+                c.fillStyle = `rgba(110,231,182,${.1 + rev * .6})`;
+                c.font = "700 14px 'JetBrains Mono',monospace";
+                c.textAlign = 'center';
+                c.textBaseline = 'middle';
+                c.fillText(rev > .6 ? '🎉 WINNER!' : '? ? ?', s.w / 2, s.h / 2);
+                if (rev < .95) {
+                    c.fillStyle = 'rgba(40,40,60,.85)';
+                    rr(c, 0, 0, s.w, s.h, 8);
+                    c.fill();
+                    c.globalCompositeOperation = 'destination-out';
+                    for (const p of sc) {
+                        c.beginPath();
+                        c.arc(p.x, p.y, p.r, 0, PI2);
+                        c.fill()
+                    }
+                    c.globalCompositeOperation = 'source-over';
+                    c.fillStyle = 'rgba(255,255,255,.04)';
+                    c.fillRect((now / 20) % s.w - 2, 0, 4, s.h)
+                }
+                lbl(c, rev > .6 ? 'REVEALED!' : 'DRAG TO SCRATCH', s.w / 2, s.h + 10, rev > .6 ? '#6ee7b6' : '#9999b8');
+                if (s.focused) fr(c, s.w, s.h, 8)
+            }
+        }
+    };
+
+    const TimerCountdown = () => {
+        let tl = 10, run = false, fa = 0;
+        return {
+            onToggle(ch) {
+                run = ch;
+                if (ch) tl = 10
+            }, tick(c, dt, now, s) {
+                if (run && tl > 0) tl = Math.max(0, tl - dt);
+                if (tl <= 0 && run) fa = Math.sin(now / 150) * .5 + .5; else fa = 0;
+                const cx = s.w / 2, cy = s.h / 2, R = Math.min(cx, cy) - 4;
+                if (fa > 0) {
+                    c.fillStyle = `rgba(255,100,100,${fa * .1})`;
+                    c.beginPath();
+                    c.arc(cx, cy, R + 4, 0, PI2);
+                    c.fill()
+                }
+                c.strokeStyle = 'rgba(255,255,255,.06)';
+                c.lineWidth = 4;
+                c.beginPath();
+                c.arc(cx, cy, R, 0, PI2);
+                c.stroke();
+                const pr = tl / 10, col = tl > 3 ? '#6ee7b6' : tl > 1 ? '#fbbf24' : '#ff6b6b';
+                c.strokeStyle = col;
+                c.lineWidth = 4;
+                c.beginPath();
+                c.arc(cx, cy, R, -Math.PI / 2, -Math.PI / 2 + pr * PI2, false);
+                c.stroke();
+                c.fillStyle = '#e2e2f0';
+                c.font = "700 16px 'JetBrains Mono',monospace";
+                c.textAlign = 'center';
+                c.textBaseline = 'middle';
+                c.fillText(tl.toFixed(1) + 's', cx, cy);
+                lbl(c, run ? (tl > 0 ? 'RUNNING' : 'TIME UP!') : 'TOGGLE TO START', cx, s.h + 10, run ? col : '#8888aa');
+                if (s.focused) fr(c, s.w, s.h, R)
+            }
+        }
+    };
+
+    const PullRefresh = () => {
+        let pa = 0, spin = false, sa = 0, st2 = 0, wasHigh = false;
+        return {
+            onDrag(v) {
+                if (!spin) {
+                    pa = v;
+                    if (v >= .95 && !wasHigh) {
+                        spin = true;
+                        st2 = 2;
+                        wasHigh = true
+                    }
+                }
+            }, tick(c, dt, now, s) {
+                if (spin) {
+                    sa += dt * 12;
+                    st2 -= dt;
+                    if (st2 <= 0) {
+                        spin = false;
+                        sa = 0;
+                        pa = 0;
+                        wasHigh = false
+                    }
+                }
+                if (!spin && s.val < .5) wasHigh = false;
+                const cx = s.w / 2, cy = s.h / 2;
+                c.fillStyle = 'rgba(255,255,255,.03)';
+                c.beginPath();
+                c.arc(cx, cy, 24, 0, PI2);
+                c.fill();
+                if (spin) {
+                    for (let i = 0; i < 3; i++) {
+                        const a = sa + i * PI2 / 3;
+                        c.strokeStyle = `rgba(56,189,248,${.3 + i * .2})`;
+                        c.lineWidth = 3;
+                        c.beginPath();
+                        c.arc(cx, cy, 16, a, a + .8);
+                        c.stroke()
+                    }
+                    lbl(c, 'LOADING...', cx, s.h + 10, '#38bdf8')
+                } else {
+                    const str = pa * 14;
+                    c.strokeStyle = pa > .6 ? '#6ee7b6' : 'rgba(255,255,255,.15)';
+                    c.lineWidth = 2;
+                    c.lineCap = 'round';
+                    c.beginPath();
+                    c.moveTo(cx, cy - 8 - str);
+                    c.lineTo(cx, cy + 4);
+                    c.stroke();
+                    c.beginPath();
+                    c.moveTo(cx - 5, cy);
+                    c.lineTo(cx, cy + 4);
+                    c.lineTo(cx + 5, cy);
+                    c.stroke();
+                    c.lineCap = 'butt';
+                    if (pa > 0) {
+                        c.strokeStyle = pa > .6 ? '#6ee7b6' : 'rgba(255,255,255,.1)';
+                        c.lineWidth = 2;
+                        c.beginPath();
+                        c.arc(cx, cy, 20, -Math.PI / 2, -Math.PI / 2 + pa * PI2);
+                        c.stroke()
+                    }
+                    lbl(c, pa > .6 ? 'DRAG TO TOP!' : 'DRAG SLIDER', cx, s.h + 10, pa > .6 ? '#6ee7b6' : '#9999b8')
+                }
+                if (s.focused) fr(c, s.w, s.h, 24)
+            }
+        }
+    };
+
+    // ═══════════════════════════════════════════════════════════
+    //  MOUNT ALL
+    // ═══════════════════════════════════════════════════════════
+    const app = document.getElementById('app');
+    const CATS = [
+        {
+            title: 'Rotary Knobs (drag slider)', items: [
+                {name: '🎚 Volume', type: 'slider', recipe: VolumeKnob, w: 80, h: 80},
+                {name: '🧭 Compass', type: 'slider', recipe: CompassKnob, w: 80, h: 80},
+            ]
+        },
+        {
+            title: 'Progress Indicators (drag slider)', items: [
+                {name: '🔄 Ring', type: 'slider', recipe: RingProgress, w: 80, h: 80},
+                {name: '🔋 Battery', type: 'slider', recipe: BatteryGauge, w: 100, h: 40},
+                {name: '📶 Signal', type: 'slider', recipe: SignalMeter, w: 80, h: 50},
+            ]
+        },
+        {
+            title: 'Controls', items: [
+                {name: '💊 Pill Tabs', type: 'button', recipe: PillTabs, w: 200, h: 36},
+                {name: '➕ Stepper', type: 'button', recipe: Stepper, w: 160, h: 48},
+                {name: '🎯 Radio Orbit', type: 'slider', recipe: RadioOrbit, w: 80, h: 80},
+            ]
+        },
+        {
+            title: 'Indicators (drag slider)', items: [
+                {name: '🔐 Password', type: 'slider', recipe: PasswordStrength, w: 180, h: 36},
+                {name: '🌊 Water Level', type: 'slider', recipe: WaterLevel, w: 60, h: 80},
+                {name: '🔥 Heat Map', type: 'slider', recipe: HeatMap, w: 110, h: 60},
+            ]
+        },
+        {
+            title: 'Mood & Feedback', items: [
+                {name: '🌗 Day / Night', type: 'toggle', recipe: DayNightToggle},
+                {name: '😊 Reactions', type: 'button', recipe: ReactionPicker, w: 200, h: 40},
+                {name: '🔔 Bell', type: 'button', recipe: NotificationBell, w: 60, h: 60},
+            ]
+        },
+        {
+            title: 'Feedback Components', items: [
+                {name: '⌨️ Typewriter', type: 'toggle', recipe: TypewriterField, w: 160, h: 30},
+                {name: '🎙 Sound Wave', type: 'button', recipe: SoundWaveBtn, w: 160, h: 48},
+                {name: '📤 Upload', type: 'slider', recipe: UploadProgress, w: 60, h: 60},
+            ]
+        },
+        {
+            title: 'Fun & Experimental', items: [
+                {name: '🎰 Scratch Card', type: 'slider', recipe: ScratchReveal, w: 200, h: 28},
+                {name: '⏱ Timer', type: 'toggle', recipe: TimerCountdown, w: 80, h: 80},
+                {name: '🔄 Pull Refresh', type: 'slider', recipe: PullRefresh, w: 80, h: 80},
+            ]
+        },
+    ];
+
+    CATS.forEach(cat => {
+        const t = document.createElement('div');
+        t.className = 'cat';
+        t.textContent = cat.title;
+        app.appendChild(t);
+        const g = document.createElement('div');
+        g.className = 'grid';
+        app.appendChild(g);
+        cat.items.forEach(item => {
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.innerHTML = `<div class="card-label">${item.name}</div>`;
+            mount(card, item.type, item.recipe, {width: item.w, height: item.h, label: item.name});
+            g.appendChild(card);
+        });
+    });
+</script>
+</body>
+</html>
