@@ -9,12 +9,19 @@
 //               a GcProfiler; checkNoGc({ maxMajor: 0, maxPauseMs: 4 }) MUST fail.
 //   listener -- a recipe whose destroy() leaks a window listener. Churned under
 //               the lite-leak tracker; audit()/warnings MUST report a leak.
+//   double-toggle    -- the OLD U-01 keydown (manual flip + a change listener):
+//                        one Space press yields TWO onToggle. The t2 one-toggle
+//                        gate MUST reject it (count !== 1).
+//   validation-bypass -- a frame stepped over an UNVALIDATED ()=>({}) recipe (no
+//                        mount guard) throws on the missing tick. Proves the t1
+//                        mount guard is load-bearing.
 //
 // If a control does NOT trip its gate, the gate is decorative -- torture.mjs
 // treats that as its own failure.
 
 import {
     mountUIFX, UIType, makeContainer, raf, settle, makeTracker, NOOP_CLEANUP,
+    EventStub, makeFrame,
 } from './harness.mjs';
 import { GcProfiler, checkNoGc } from '@zakkster/lite-gc-profiler';
 
@@ -93,4 +100,57 @@ export async function runListenerControl() {
     const leaked = findings.length > 0 || sink.warns.length > 0 || sink.leaks.length > 0;
     // The control is correct when the leak surfaces.
     return { leaked, findings: findings.length, warns: sink.warns.length, leaks: sink.leaks.length };
+}
+
+// ---------------------------------------------------------------------------
+//  double-toggle -- the OLD U-01 defect: two onToggle for one Space press
+// ---------------------------------------------------------------------------
+
+// Hand-rolls the pre-U1 keydown on a bare stub checkbox: a `change` listener
+// (the native activation path) AND a buggy keydown that manually flips
+// `el.checked` and counts. Driving keydown{Space} + native el.click() fires BOTH
+// paths -> count 2. The t2 one-toggle gate rejects any count !== 1, so this
+// control is correct precisely when it FAILS that gate.
+export async function runDoubleToggleControl() {
+    const el = document.createElement('input');
+    el.type = 'checkbox';
+    let count = 0;
+
+    // Native activation path (correct, kept).
+    el.addEventListener('change', () => { count++; });
+    // OLD buggy keydown: manual flip + manual count, DUPLICATING the change path
+    // when the browser also natively activates the checkbox on Space.
+    el.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') { el.checked = !el.checked; count++; }
+    });
+
+    // One press: the buggy keydown counts once, then native activation (click ->
+    // change) counts again -> two onToggle for a single Space.
+    el.dispatchEvent(Object.assign(new EventStub('keydown'), { code: 'Space' }));
+    el.click();
+
+    // Correct when the gate REJECTS it (one press must be exactly one toggle).
+    return { failed: count !== 1, count };
+}
+
+// ---------------------------------------------------------------------------
+//  validation-bypass -- a frame stepped over an unvalidated recipe throws
+// ---------------------------------------------------------------------------
+
+// makeFrame() replicates the controller's per-frame body but with NO mount
+// guard: it calls recipe.tick directly. A ()=>({}) factory has no tick, so the
+// first frame throws a TypeError. Proves the t1 mount-time validation is
+// load-bearing -- without it a missing tick reaches a hot frame.
+export async function runValidationBypassControl() {
+    let threw = false;
+    let error = '';
+    try {
+        const frame = makeFrame(() => ({}));
+        frame();
+    } catch (e) {
+        threw = true;
+        error = e && e.message ? e.message : String(e);
+    }
+    // Correct when it THROWS (the guard the mount path adds is load-bearing).
+    return { failed: threw, error };
 }

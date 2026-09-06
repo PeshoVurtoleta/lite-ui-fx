@@ -18,7 +18,7 @@ if (!globalThis.window || typeof globalThis.window.addEventListener !== 'functio
 }
 
 import {
-    installDom, setDpr, makeContainer, headChildCount,
+    installDom, setDpr, emitDpr, makeContainer, headChildCount,
     Ctx2DStub, EventStub, PointerEventStub, FocusEventStub,
 } from '../harness/dom-stub.mjs';
 import * as raf from '../harness/raf-stub.mjs';
@@ -124,7 +124,7 @@ function allocPerOp(recipeFactory) {
 
 export {
     // stubs
-    installDom, setDpr, makeContainer, headChildCount,
+    installDom, setDpr, emitDpr, makeContainer, headChildCount,
     Ctx2DStub, EventStub, PointerEventStub, FocusEventStub, raf,
     // controller
     mountUIFX, UIType,
@@ -133,5 +133,5 @@ export {
     // prng
     rnd, seed,
     // gates
-    makeTracker, NOOP_CLEANUP, settle, gcGate, allocPerOp,
+    makeTracker, NOOP_CLEANUP, settle, gcGate, allocPerOp, makeFrame,
 };

@@ -13,6 +13,7 @@ export interface UIFXState {
     active: boolean;
     focused: boolean;
     toggled: boolean;
+    disabled: boolean;
     val: number;
     w: number;
     h: number;
@@ -52,6 +53,12 @@ export interface MountOptions {
     height?: number;
     padding?: number;
     label?: string;
+    /** Slider initial value, 0..1 (default 0.5). Out-of-range or non-number throws. */
+    value?: number;
+    /** Toggle initial checked state (default false). */
+    checked?: boolean;
+    /** Disables the native element and sets state.disabled for recipes. */
+    disabled?: boolean;
 }
 
 export interface UIFXInstance {

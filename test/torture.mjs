@@ -6,8 +6,9 @@
 // + seed to stderr and exits 1. The GATE diagnostic (leak + gc + alloc numbers)
 // is written to stderr so stdout stays exactly "ok".
 //
-// TORTURE_CONTROL=alloc|listener activates one deliberately-broken t9 control;
-// that run MUST exit non-zero (the gate proving it can fail).
+// TORTURE_CONTROL=alloc|listener|double-toggle|validation-bypass activates one
+// deliberately-broken t9 control; that run MUST exit non-zero (the gate proving
+// it can fail).
 //
 // Requires --expose-gc: the retention settle and the gc gate both need it.
 
@@ -53,7 +54,32 @@ if (control) {
         process.exit(2);
     }
 
-    console.error('unknown TORTURE_CONTROL: ' + control + ' (want alloc|listener)');
+    if (control === 'double-toggle') {
+        const r = await t9.runDoubleToggleControl();
+        console.error('control=double-toggle gate-rejected=' + r.failed +
+            ' onToggleCount=' + r.count);
+        if (r.failed) {
+            console.error('CONTROL double-toggle correctly FAILED the one-toggle gate (exit 1)');
+            process.exit(1);
+        }
+        console.error('CONTROL double-toggle did NOT fail its gate -- gate is decorative');
+        process.exit(2);
+    }
+
+    if (control === 'validation-bypass') {
+        const r = await t9.runValidationBypassControl();
+        console.error('control=validation-bypass threw=' + r.failed +
+            ' error=' + r.error);
+        if (r.failed) {
+            console.error('CONTROL validation-bypass correctly THREW at frame step (exit 1)');
+            process.exit(1);
+        }
+        console.error('CONTROL validation-bypass did NOT throw -- gate is decorative');
+        process.exit(2);
+    }
+
+    console.error('unknown TORTURE_CONTROL: ' + control +
+        ' (want alloc|listener|double-toggle|validation-bypass)');
     process.exit(1);
 }
 
@@ -73,16 +99,20 @@ async function tier(name, fn) {
 
 const { runT0 } = await import('./torture/t0-lifecycle.mjs');
 const { runT1 } = await import('./torture/t1-degenerate.mjs');
+const { runT2 } = await import('./torture/t2-a11y-contract.mjs');
 const { runT4 } = await import('./torture/t4-soak.mjs');
+const { runT5 } = await import('./torture/t5-scale.mjs');
 
 await tier('t0-lifecycle', runT0);
 await tier('t1-degenerate', runT1);
+await tier('t2-a11y-contract', runT2);
 const r4 = await tier('t4-soak', runT4);
+await tier('t5-scale', runT5);
 
 // Empty registered tiers -- named with the session that fills them.
-console.error('skip tier=t2-a11y        (fills in U1)');
 console.error('skip tier=t3-frame-alloc (fills in U3)');
-console.error('skip tier=t5-scale       (fills in U3/U5)');
+// t5 IS imported and executed above; it is partially filled, not skipped.
+console.error('partial tier=t5-scale (U-02 regression + single-RAF; scale-cost/alloc in U3/U5)');
 
 // GATE diagnostic. The gc/alloc numbers come from a zero-alloc no-op recipe
 // smoke (a POSITIVE control: the gc + alloc gates wired and green on a hot path

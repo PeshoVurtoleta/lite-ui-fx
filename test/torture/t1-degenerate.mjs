@@ -1,6 +1,7 @@
 // test/torture/t1-degenerate.mjs
-// Pin the CURRENT fail-open behaviour verbatim with TODO(U1) markers. Nothing
-// here throws today; U1 flips these pins into thrown errors.
+// The mount surface fails closed (U-02A / U-10). Every unverified input is an
+// Error at mount with a did-you-mean where a key is involved; nothing here mounts
+// a half-broken component that a later frame could throw inside.
 
 import assert from 'node:assert/strict';
 import { mountUIFX, UIType, makeContainer, setDpr, raf } from './harness.mjs';
@@ -10,23 +11,49 @@ const counting = () => ({ tick() {} });
 export async function runT1() {
     const container = makeContainer();
 
-    // TODO(U1) flip: an unknown option key is silently ignored and width falls
-    // back to the type default (160), instead of an error with a did-you-mean.
-    const a = mountUIFX(container, UIType.BUTTON, counting, { widht: 200 });
-    assert.equal(a.state.w, 160, 'TODO(U1) unknown option {widht} ignored -> width 160');
-    a.destroy();
+    // U-10 fixed: an unknown option key is an Error with a did-you-mean, not a
+    // silent drop. { widht:200 } -> throws naming the intended "width".
+    assert.throws(
+        () => mountUIFX(container, UIType.BUTTON, counting, { widht: 200 }),
+        /width/,
+        'unknown option {widht} throws with a did-you-mean for "width"',
+    );
 
-    // TODO(U1) flip: a factory returning {} mounts WITHOUT throwing. Finding U-02:
-    // do NOT step a frame while it is mounted -- a missing tick throws inside the
-    // shared ticker and permanently kills the RAF chain for every component.
-    // Destroy without stepping.
-    const b = mountUIFX(container, UIType.BUTTON, () => ({}));
-    assert.ok(b && b.el, 'empty recipe object mounts without throwing');
-    b.destroy();
+    // U-02A fixed: a factory returning {} (no tick) is an Error AT MOUNT, naming
+    // tick -- never a clean mount that throws inside the shared ticker later.
+    assert.throws(
+        () => mountUIFX(container, UIType.BUTTON, () => ({})),
+        /tick/,
+        'recipe without tick throws at mount naming "tick"',
+    );
 
-    // width 0 constructs (falls back to the default via `width || default`).
+    // U-02A: an unknown recipe hook key is an Error with a did-you-mean.
+    assert.throws(
+        () => mountUIFX(container, UIType.BUTTON, () => ({ tick() {}, onHoverr() {} })),
+        /onHover/,
+        'unknown recipe hook {onHoverr} throws with a did-you-mean for "onHover"',
+    );
+
+    // U-02A: a non-function recipeFactory is an Error naming the arg.
+    assert.throws(
+        () => mountUIFX(container, UIType.BUTTON, {}),
+        /recipeFactory/,
+        'non-function recipeFactory throws naming recipeFactory',
+    );
+
+    // U-02A: a null container is an Error naming the arg.
+    assert.throws(
+        () => mountUIFX(null, UIType.BUTTON, counting),
+        /container/,
+        'null container throws naming container',
+    );
+
+    // DECIDED default (not a flip): width 0 is falsy, so `width || typeDefault`
+    // resolves to the BUTTON default 160. This is documented behaviour, verified
+    // here so a future change to the default resolution is caught.
     const c = mountUIFX(container, UIType.BUTTON, counting, { width: 0 });
-    assert.ok(c && c.el, 'width 0 constructs');
+    assert.ok(c && c.el, 'width 0 constructs (documented width||default)');
+    assert.equal(c.state.w, 160, 'width 0 falls back to the BUTTON default 160');
     c.destroy();
 
     // dpr variations construct.

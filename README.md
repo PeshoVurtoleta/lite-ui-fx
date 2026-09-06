@@ -150,6 +150,9 @@ import { VolumeKnob, WaterLevel, TimerCountdown } from './recipes/UIFXRecipes3.j
 | `options.height` | `number` | Element height |
 | `options.padding` | `number` | Canvas overflow (default: 40px) |
 | `options.label` | `string` | Accessible label (aria-label) |
+| `options.value` | `number` | Slider initial value, 0..1 (default 0.5); out-of-range throws |
+| `options.checked` | `boolean` | Toggle initial state (default false) |
+| `options.disabled` | `boolean` | Disables the native element; sets `state.disabled` |
 
 Returns `{ el, canvas, wrapper, state, destroy() }`.
 
@@ -169,6 +172,7 @@ Returns `{ el, canvas, wrapper, state, destroy() }`.
     active: boolean;     // Pointer pressed
     focused: boolean;    // Keyboard focus
     toggled: boolean;    // Checkbox state
+    disabled: boolean;   // Disabled via options.disabled
     val: number;         // Slider value (0-1)
     w: number;           // Element width
     h: number;           // Element height

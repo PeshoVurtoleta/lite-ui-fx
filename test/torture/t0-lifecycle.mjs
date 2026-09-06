@@ -1,8 +1,8 @@
 // test/torture/t0-lifecycle.mjs
 // Mount/destroy every UIType with a counting recipe. Assert: destroy idempotent,
 // recipe.destroy called exactly once, wrapper removed, RAF pending returns to 0,
-// and document.head childCount delta pinned at the CURRENT wrong value for
-// sliders (KNOWN-U-09).
+// and document.head childCount delta is ZERO -- the slider style is shared and
+// refcounted (U-09 fixed), so mount+destroy nets nothing into document.head.
 
 import assert from 'node:assert/strict';
 import { mountUIFX, UIType, makeContainer, headChildCount, raf } from './harness.mjs';
@@ -11,10 +11,8 @@ export async function runT0() {
     const container = makeContainer();
     const types = [UIType.BUTTON, UIType.TOGGLE, UIType.SLIDER];
     const headBefore = headChildCount();
-    let sliderMounts = 0;
 
     for (const type of types) {
-        if (type === UIType.SLIDER) sliderMounts++;
         let destroyCount = 0;
         const inst = mountUIFX(container, type, () => ({
             tick() {},
@@ -30,9 +28,10 @@ export async function runT0() {
     }
 
     const styleDelta = headChildCount() - headBefore;
-    // KNOWN-U-09: every slider mount leaks one <style> into document.head that
-    // destroy() never removes. Pinned EXACT at the current wrong value; this flips
-    // to 0 in U1. Never a loose >= 0.
-    assert.equal(styleDelta, sliderMounts, 'KNOWN-U-09 slider head-style leak');
+    // U-09 fixed: slider style shared + refcounted. acquireSliderStyle injects one
+    // <style> on the first slider; releaseSliderStyle removes it when the last
+    // slider is destroyed. Mount+destroy of every type nets EXACTLY zero into
+    // document.head. Never a loose >= 0.
+    assert.equal(styleDelta, 0, 'U-09 fixed: slider style shared+refcounted');
     return { styleDelta };
 }

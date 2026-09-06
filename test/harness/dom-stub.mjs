@@ -106,6 +106,16 @@ class ElementStub {
     getBoundingClientRect() {
         return { top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0 };
     }
+    // Native activation. Mirror the browser: a click event fires; a checkbox then
+    // flips `.checked` and fires `change`. Setting `.checked` directly stays
+    // event-free (assignment below is the sole flip; no event on plain writes).
+    click() {
+        this.dispatchEvent(new EventStub('click'));
+        if (this.type === 'checkbox') {
+            this.checked = !this.checked;
+            this.dispatchEvent(new EventStub('change'));
+        }
+    }
     addEventListener(type, fn, opts) {
         if (typeof fn !== 'function') return;
         const signal = opts && opts.signal;
@@ -168,6 +178,9 @@ class EventStub {
         this.currentTarget = null;
         if (init) Object.assign(this, init);
     }
+    // No-op: node has no default action to suppress. Present so a defensive
+    // preventDefault() in the controller cannot throw here.
+    preventDefault() {}
 }
 class PointerEventStub extends EventStub {}
 class FocusEventStub extends EventStub {}
@@ -187,9 +200,49 @@ const _document = {
 
 let _installed = false;
 
+// Media-query objects created via window.matchMedia. emitDpr() drives them all
+// so the controller's DPR re-read path is testable. Cold; never on a hot body.
+const _mediaQueries = [];
+
 function installDom({ dpr = 1 } = {}) {
-    if (!globalThis.window) globalThis.window = {};
-    globalThis.window.devicePixelRatio = dpr;
+    // window is an ElementStub so scroll/resize listeners (T6) and the DPR
+    // watcher (T5) run through the same signal-honouring addEventListener the
+    // controller relies on for AbortController-driven teardown.
+    if (!globalThis.window) globalThis.window = new ElementStub('window');
+    const win = globalThis.window;
+    win.devicePixelRatio = dpr;
+    win.matchMedia = function matchMedia(media) {
+        const listeners = new Set();
+        const mql = {
+            matches: false,
+            media,
+            addEventListener(type, fn, opts) {
+                if (typeof fn !== 'function') return;
+                const signal = opts && opts.signal;
+                if (signal && signal.aborted) return;
+                const rec = { fn };
+                listeners.add(rec);
+                // Honour { signal }: on abort, actually DROP the listener so a
+                // destroyed instance's change closure (which retains canvas/ctx/
+                // state) is released immediately -- not held until the next
+                // _emit. once:true self-removes the abort listener too, so this
+                // adds no residual retention of its own (NIT 2).
+                if (signal) {
+                    signal.addEventListener('abort', () => { listeners.delete(rec); }, { once: true });
+                }
+            },
+            removeEventListener(type, fn) {
+                for (const rec of listeners) if (rec.fn === fn) { listeners.delete(rec); break; }
+            },
+            _emit(d) {
+                win.devicePixelRatio = d;
+                const ev = new EventStub('change');
+                for (const rec of listeners) rec.fn.call(this, ev);
+            },
+        };
+        _mediaQueries.push(mql);
+        return mql;
+    };
     globalThis.document = _document;
     globalThis.Event = EventStub;
     globalThis.PointerEvent = PointerEventStub;
@@ -214,9 +267,13 @@ function headChildCount() { return _document.head.children.length; }
 
 function isInstalled() { return _installed; }
 
+// Fire a DPR change through every window.matchMedia() result (cold, test-only).
+function emitDpr(n) { for (const mql of _mediaQueries) mql._emit(n); }
+
 export {
     installDom,
     setDpr,
+    emitDpr,
     makeContainer,
     headChildCount,
     isInstalled,

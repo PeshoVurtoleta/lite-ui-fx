@@ -7,9 +7,9 @@
 // held-value contract. After the churn: gc + settle, then assert the tracker
 // drains to 0 with zero orphan findings and stable head/body child counts.
 //
-// Sliders are EXCLUDED from the leak-gated loop (finding U-09 makes them fail by
-// design until U1). One separate slider block pins the KNOWN wrong style-leak
-// count EXACTLY -- never a loose >=.
+// Sliders run in a separate block that pins the U-09 fix: SLIDER_K mount/destroy
+// pairs net EXACTLY zero <style> children into document.head (shared, refcounted
+// slider style) -- never a loose >=.
 
 import assert from 'node:assert/strict';
 import {
@@ -78,26 +78,39 @@ export async function runT4() {
     const headDelta = headChildCount() - headBefore;
     const bodyDelta = document.body.children.length - bodyBefore;
 
-    // Assertion messages built only on failure.
+    // Assertion messages built only on failure. Warnings are asserted at the
+    // END of the tier (after the slider block), never here -- a mid-tier read
+    // would miss any warning the slider mounts fire.
     assert.equal(live, 0, () => 'tracker size ' + live + ' != 0 after churn');
     assert.equal(findings.length, 0, () => 'orphan findings: ' + findings.map((f) => f.kind).join(','));
     assert.equal(sink.leaks.length, 0, () => 'leaks: ' + sink.leaks.join(','));
-    assert.equal(sink.warns.length, 0, () => 'warnings: ' + sink.warns.join(','));
     assert.equal(headDelta, 0, () => 'head childCount drifted by ' + headDelta + ' (BUTTON/TOGGLE add no <style>)');
     assert.equal(bodyDelta, 0, () => 'body childCount drifted by ' + bodyDelta);
     assert.equal(raf.pending(), 0, 't4 raf pending returns to 0');
 
-    // -- Slider block (NOT leak-gated) -----------------------------------------
-    // KNOWN-U-09: every slider mount appends a <style> to document.head that
-    // destroy() never removes. Pin the wrong value EXACTLY at SLIDER_K; this
-    // flips to 0 in U1. Never >= 0.
+    // -- Slider block -----------------------------------------------------------
+    // U-09 fixed: the slider thumb <style> is shared + refcounted. Across
+    // SLIDER_K mount/destroy pairs document.head nets EXACTLY zero -- the style is
+    // injected on the first live slider and removed when the last one is
+    // destroyed. Never a loose >= 0.
+    //
+    // Each mount runs INSIDE the same createRoot(effect(...)) owner the main
+    // churn uses, so the controller's window scroll/resize + matchMedia change
+    // listeners are OWNED -- they fire no listener-orphan:no-owner-set warning.
     const sHeadBefore = headChildCount();
     for (let i = 0; i < SLIDER_K; i++) {
-        const s = mountUIFX(container, UIType.SLIDER, makeRecipe);
-        s.destroy();
+        const stop = createRoot(() => effect(() => {
+            const s = mountUIFX(container, UIType.SLIDER, makeRecipe);
+            s.destroy();
+        }));
+        stop();
     }
     const sliderDelta = headChildCount() - sHeadBefore;
-    assert.equal(sliderDelta, SLIDER_K, () => 'KNOWN-U-09 expected exactly ' + SLIDER_K + ' leaked <style>, got ' + sliderDelta);
+    assert.equal(sliderDelta, 0, () => 'U-09 fixed: slider head-style delta must be 0, got ' + sliderDelta);
+
+    // Warnings asserted 0 only now -- after EVERY mount/destroy (main churn +
+    // slider block). A real 0, not a value snapshot taken before the sliders ran.
+    assert.equal(sink.warns.length, 0, () => 'warnings: ' + sink.warns.join(','));
 
     return {
         live,
