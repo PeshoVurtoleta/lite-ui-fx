@@ -18,8 +18,8 @@ if (!globalThis.window || typeof globalThis.window.addEventListener !== 'functio
 }
 
 import {
-    installDom, setDpr, emitDpr, makeContainer, headChildCount,
-    Ctx2DStub, EventStub, PointerEventStub, FocusEventStub,
+    installDom, setDpr, emitDpr, emitReducedMotion, makeContainer, headChildCount,
+    Ctx2DStub, EventStub, PointerEventStub, FocusEventStub, FakeTicker,
 } from '../harness/dom-stub.mjs';
 import * as raf from '../harness/raf-stub.mjs';
 
@@ -89,6 +89,9 @@ function makeFrame(recipeFactory, driver) {
         val: 0.5, w: 160, h: 48, padding: 40, dpr: 1,
         // Decorate-mode fields (U4b): a form-control host's value + validity.
         text: '', valid: true,
+        // Host-clock fields (U5): reduced-motion flag + frame budget. Present so a
+        // calm-path recipe reads a real boolean/number, never undefined.
+        reducedMotion: false, budget: 1,
     };
     const pointer = { x: 4, y: 4, vx: 0, vy: 0 };
     const cw = state.w + 80, ch = state.h + 80, dpr = 1, padding = 40;
@@ -140,8 +143,8 @@ function allocPerOp(recipeFactory, driver = null) {
 
 export {
     // stubs
-    installDom, setDpr, emitDpr, makeContainer, headChildCount,
-    Ctx2DStub, EventStub, PointerEventStub, FocusEventStub, raf,
+    installDom, setDpr, emitDpr, emitReducedMotion, makeContainer, headChildCount,
+    Ctx2DStub, EventStub, PointerEventStub, FocusEventStub, FakeTicker, raf,
     // controller
     mountUIFX, decorateUIFX, UIType,
     // recipes registry (drives the meta-driven t0/t1 sweep over all 56)

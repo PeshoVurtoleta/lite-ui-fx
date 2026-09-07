@@ -235,16 +235,26 @@ export function SwarmToggle(o = {}) {
             // Knob target position
             const tx = st.toggled ? st.w - 18 : 18;
 
-            // Render particles (spring toward formation)
+            // Render particles (spring toward formation). Under reduced motion
+            // (U5) they REST at the formation -- no swarm drift, no explosion --
+            // so the toggle reads as a static knob. This is the reference calm path.
             ctx.fillStyle = st.toggled ? P.accent : P.dim;
-            for (let i = 0; i < N; i++) {
-                vx[i] += ((tx + ox[i]) - px[i]) * 15 * dt;
-                vy[i] += ((st.h / 2 + oy[i]) - py[i]) * 15 * dt;
-                vx[i] *= 0.85;
-                vy[i] *= 0.85;
-                px[i] += vx[i] * dt;
-                py[i] += vy[i] * dt;
-                ctx.fillRect(px[i], py[i], 1.5, 1.5);
+            if (st.reducedMotion) {
+                for (let i = 0; i < N; i++) {
+                    px[i] = tx + ox[i];
+                    py[i] = st.h / 2 + oy[i];
+                    ctx.fillRect(px[i], py[i], 1.5, 1.5);
+                }
+            } else {
+                for (let i = 0; i < N; i++) {
+                    vx[i] += ((tx + ox[i]) - px[i]) * 15 * dt;
+                    vy[i] += ((st.h / 2 + oy[i]) - py[i]) * 15 * dt;
+                    vx[i] *= 0.85;
+                    vy[i] *= 0.85;
+                    px[i] += vx[i] * dt;
+                    py[i] += vy[i] * dt;
+                    ctx.fillRect(px[i], py[i], 1.5, 1.5);
+                }
             }
 
             if (st.focused) drawFocusRing(ctx, st.w, st.h, st.h / 2);
@@ -2335,7 +2345,8 @@ export function PasswordStrength(o = {}) {
             const t = st.text || '';
             if (t !== lastText) { lastText = t; strength = pwStrength(t); }
             const level=Math.ceil(strength*4);
-            for(let i=0;i<4;i++) segs[i]=lerp(segs[i],i<level?1:0,dt*10);
+            // Reduced motion (U5): snap segments to their level (no grow animation).
+            for(let i=0;i<4;i++) segs[i]=st.reducedMotion?(i<level?1:0):lerp(segs[i],i<level?1:0,dt*10);
 
             const segW=(st.w-12)/4,segH=8;
             for(let i=0;i<4;i++){
@@ -2604,15 +2615,17 @@ export function TypewriterField(o = {}) {
     return {
         tick(c,dt,now,st) {
             const len=(st.text || '').length;
-            if(len>lastLen) spark=1;   // a new char landed -> caret pulse
+            // Reduced motion (U5): no keystroke pulse, no caret blink, underline
+            // snaps to length -- a steady underline + steady caret, zero animation.
+            if(len>lastLen && !st.reducedMotion) spark=1;   // a new char landed -> caret pulse
             lastLen=len;
-            blink=(blink+dt*3)%2;
-            spark=spark>0?spark-dt*3:0;
+            if(!st.reducedMotion) blink=(blink+dt*3)%2;
+            spark=st.reducedMotion?0:(spark>0?spark-dt*3:0);
 
             // Underline grows toward a fraction of the width set by text length
             // (capped at ~24 chars = full width). No measureText -> zero-alloc.
             const target=len===0?0:Math.min(len/24,1);
-            fill=lerp(fill,target,dt*8);
+            fill=st.reducedMotion?target:lerp(fill,target,dt*8);
             const y=st.h-3, x0=2, x1=2+(st.w-4)*fill;
 
             c.strokeStyle='rgba(255,255,255,.08)';c.lineWidth=2;
@@ -2626,7 +2639,7 @@ export function TypewriterField(o = {}) {
                 c.beginPath();c.arc(x1,y,4+spark*3,0,PI2);c.fill();
                 c.globalAlpha=1;
             }
-            if(st.focused&&blink<1){
+            if(st.focused&&(st.reducedMotion||blink<1)){
                 c.fillStyle=P.accent;c.fillRect(x1,y-9,1.5,12);
             }
         },
@@ -2909,7 +2922,8 @@ export function FocusHalo(o = {}) {
         tick(c,dt,now,st) {
             halo=lerp(halo, st.focused?1:0, dt*8);
             if(halo<0.01) return;
-            const breathe=0.75+Math.sin(now/380)*0.25, r=8;
+            // Reduced motion (U5): a steady halo, no breathing pulse.
+            const breathe=st.reducedMotion?1:0.75+Math.sin(now/380)*0.25, r=8;
             c.strokeStyle=P.accent;
             for(let i=3;i>=1;i--){
                 c.globalAlpha=halo*breathe*(0.10*i);
@@ -2936,7 +2950,9 @@ export function ErrorShake(o = {}) {
             shake = shake>0 ? shake-dt*1.6 : 0;
             if(shake<0.01 && st.valid!==false) return;   // nothing to show
 
-            const dx = shake>0 ? Math.sin(now/22)*shake*6 : 0;
+            // Reduced motion (U5): the border appears/holds but NEVER shakes
+            // (dx stays 0) -- the whole point of the media query.
+            const dx = (shake>0 && !st.reducedMotion) ? Math.sin(now/22)*shake*6 : 0;
             const a = st.valid===false ? 0.9 : shake, r=8;
             c.globalAlpha=a;c.strokeStyle=P.accent;c.lineWidth=2;
             rr(c,dx,0,st.w,st.h,r);c.stroke();
@@ -2955,6 +2971,7 @@ export function SuccessBloom(o = {}) {
     let wasValid=true, ring=0;
     function bloom(st){
         ring=1;
+        if(st.reducedMotion) return;   // U5 calm: a fading ring only, no particle burst
         const cx=st.w/2, cy=st.h/2;
         for(let i=0;i<N;i++){
             const ang=(i/N)*PI2, sp=40+(i%5)*8;
@@ -2969,7 +2986,8 @@ export function SuccessBloom(o = {}) {
 
             if(ring>0){
                 ring-=dt*1.4; if(ring<0) ring=0;
-                const cx=st.w/2, cy=st.h/2, rad=(1-ring)*st.w*0.6;
+                // Reduced motion (U5): a fixed-radius ring that fades (alpha), no expansion.
+                const cx=st.w/2, cy=st.h/2, rad=st.reducedMotion?st.w*0.5:(1-ring)*st.w*0.6;
                 c.globalAlpha=ring;c.strokeStyle=P.accent;c.lineWidth=2;
                 c.beginPath();c.arc(cx,cy,rad,0,PI2);c.stroke();
                 c.globalAlpha=1;
@@ -3149,7 +3167,7 @@ export const RECIPES = Object.assign(Object.create(null), {
  *   motionSafe inherently-calm under prefers-reduced-motion (false for all -- U5)
  */
 export const RECIPE_META = [
-    { id: 'swarmToggle', name: 'Swarm Toggle', type: 'toggle', family: 'Toggles', themeable: true, motionSafe: false },
+    { id: 'swarmToggle', name: 'Swarm Toggle', type: 'toggle', family: 'Toggles', themeable: true, motionSafe: true },
     { id: 'liquidToggle', name: 'Liquid Toggle', type: 'toggle', family: 'Toggles', themeable: true, motionSafe: false },
     { id: 'neonPulseToggle', name: 'Neon Pulse Toggle', type: 'toggle', family: 'Toggles', themeable: true, motionSafe: false },
     { id: 'magneticButton', name: 'Magnetic Button', type: 'button', family: 'Buttons', themeable: true, motionSafe: false },
@@ -3190,21 +3208,21 @@ export const RECIPE_META = [
     { id: 'pillTabs', name: 'Pill Tabs', type: 'button', family: 'Controls', themeable: true, motionSafe: false },
     { id: 'stepper', name: 'Stepper', type: 'button', family: 'Controls', themeable: true, motionSafe: false },
     { id: 'radioOrbit', name: 'Radio Orbit', type: 'slider', family: 'Controls', themeable: true, motionSafe: false },
-    { id: 'passwordStrength', name: 'Password Strength', type: 'decorate', family: 'Indicators', themeable: true, motionSafe: false },
+    { id: 'passwordStrength', name: 'Password Strength', type: 'decorate', family: 'Indicators', themeable: true, motionSafe: true },
     { id: 'waterLevel', name: 'Water Level', type: 'slider', family: 'Indicators', themeable: true, motionSafe: false },
     { id: 'heatMap', name: 'Heat Map', type: 'slider', family: 'Indicators', themeable: true, motionSafe: false },
     { id: 'dayNightToggle', name: 'Day Night Toggle', type: 'toggle', family: 'Mood', themeable: true, motionSafe: false },
     { id: 'reactionPicker', name: 'Reaction Picker', type: 'button', family: 'Mood', themeable: true, motionSafe: false },
     { id: 'notificationBell', name: 'Notification Bell', type: 'button', family: 'Mood', themeable: true, motionSafe: false },
-    { id: 'typewriterField', name: 'Typewriter Field', type: 'decorate', family: 'Feedback', themeable: true, motionSafe: false },
+    { id: 'typewriterField', name: 'Typewriter Field', type: 'decorate', family: 'Feedback', themeable: true, motionSafe: true },
     { id: 'soundWaveBtn', name: 'Sound Wave Btn', type: 'button', family: 'Feedback', themeable: true, motionSafe: false },
     { id: 'uploadProgress', name: 'Upload Progress', type: 'progress', family: 'Feedback', themeable: true, motionSafe: false },
     { id: 'scratchReveal', name: 'Scratch Reveal', type: 'slider', family: 'Fun', themeable: true, motionSafe: false },
     { id: 'timerCountdown', name: 'Timer Countdown', type: 'toggle', family: 'Fun', themeable: true, motionSafe: false },
     { id: 'pullRefresh', name: 'Pull Refresh', type: 'slider', family: 'Fun', themeable: true, motionSafe: false },
-    { id: 'focusHalo', name: 'Focus Halo', type: 'decorate', family: 'Form', themeable: true, motionSafe: false },
-    { id: 'errorShake', name: 'Error Shake', type: 'decorate', family: 'Form', themeable: true, motionSafe: false },
-    { id: 'successBloom', name: 'Success Bloom', type: 'decorate', family: 'Form', themeable: true, motionSafe: false },
+    { id: 'focusHalo', name: 'Focus Halo', type: 'decorate', family: 'Form', themeable: true, motionSafe: true },
+    { id: 'errorShake', name: 'Error Shake', type: 'decorate', family: 'Form', themeable: true, motionSafe: true },
+    { id: 'successBloom', name: 'Success Bloom', type: 'decorate', family: 'Form', themeable: true, motionSafe: true },
 ];
 
 /** Names of every built-in recipe (the keys of RECIPES at load time). */
@@ -3329,6 +3347,15 @@ export function mountRecipe(container, id, options) {
     }
     const meta = RECIPE_META.find((m) => m.id === id) || null;
     const type = meta ? meta.type : undefined;
+    // Reduced-motion advisory (U5, decisions/0005): a recipe with no calm path,
+    // mounted while the user prefers reduced motion, gets a console.warn -- advice,
+    // not a gate (a host may run its own toggle). Cold, mount-time only; a missing
+    // matchMedia is a silent skip (fail closed, never throw).
+    if (meta && meta.motionSafe === false &&
+        typeof window !== 'undefined' && typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        console.warn('mountRecipe: recipe "' + id + '" is not motionSafe and the user prefers reduced motion; it will animate. See RECIPE_META.motionSafe.');
+    }
     if (options && 'type' in options && options.type !== type) {
         throw new Error(
             'mountRecipe: recipe "' + id + '" mounts as "' + type +

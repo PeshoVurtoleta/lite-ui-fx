@@ -19,13 +19,19 @@
 //                        an attribute + style) instead of only painting its
 //                        overlay. The t0 decorate DOM-diff asserts the host is
 //                        byte-identical except the overlay, so it MUST catch this.
+//   fake-calm        -- a recipe that KEEPS MOVING under state.reducedMotion (a
+//                        motionSafe liar). The U5 reduced-motion assertion (a calm
+//                        recipe's drawing is static under reduce) MUST reject it.
+//   ticker-ownership -- a { ticker } component whose teardown DESTROYS the caller's
+//                        ticker. The t5 ownership gate (a caller ticker survives a
+//                        component's destroy) MUST catch it.
 //
 // If a control does NOT trip its gate, the gate is decorative -- torture.mjs
 // treats that as its own failure.
 
 import {
     mountUIFX, decorateUIFX, UIType, makeContainer, raf, settle, makeTracker, NOOP_CLEANUP,
-    EventStub, makeFrame,
+    EventStub, makeFrame, FakeTicker,
 } from './harness.mjs';
 import { GcProfiler, checkNoGc } from '@zakkster/lite-gc-profiler';
 
@@ -190,4 +196,55 @@ export async function runDecorateHostMutationControl() {
     container.removeChild(host);
     // Correct when the mutation is DETECTABLE (a t0 host-byte-identical diff fails).
     return { failed: mutated, attrsDelta: host._attrs.size - attrsBefore };
+}
+
+// ---------------------------------------------------------------------------
+//  fake-calm -- a recipe that ignores state.reducedMotion (a motionSafe liar)
+// ---------------------------------------------------------------------------
+
+// A calm-path recipe must render STATICALLY under state.reducedMotion (U5). This
+// BAD recipe paints a time-varying horizontal offset (via moveTo, like rr()) even
+// under reduce. The reduced-motion assertion -- a calm recipe's moveTo x collapses
+// to ONE value under reduce -- MUST reject it (it emits many distinct x). Correct
+// precisely when the motion is DETECTABLE under reduce.
+export async function runFakeCalmControl() {
+    // Minimal coordinate-capturing ctx (the method-name stub cannot see x).
+    const xs = [];
+    const ctx = {
+        beginPath() {}, closePath() {}, save() {}, restore() {}, translate() {}, scale() {},
+        setTransform() {}, clearRect() {}, rect() {}, roundRect() {}, setLineDash() {},
+        stroke() {}, fill() {}, fillRect() {}, strokeRect() {}, lineTo() {}, arc() {}, arcTo() {},
+        fillStyle: '', strokeStyle: '', globalAlpha: 1, lineWidth: 1, font: '', textAlign: '',
+        moveTo(x) { xs.push(x); },
+    };
+    const badRecipe = {
+        // Moves regardless of st.reducedMotion -- the defect the gate must catch.
+        tick(c, dt, now) { c.moveTo(Math.sin(now / 22) * 6, 0); },
+    };
+    for (let k = 1; k <= 6; k++) badRecipe.tick(ctx, 0.016, 100 + k * 16, { reducedMotion: true });
+    const distinct = new Set(xs).size;
+    // Correct when the reduce assertion (x constant) would FAIL: distinct > 1.
+    return { failed: distinct > 1, distinct };
+}
+
+// ---------------------------------------------------------------------------
+//  ticker-ownership -- a { ticker } teardown that destroys the caller's clock
+// ---------------------------------------------------------------------------
+
+// A component given a caller ticker must NEVER destroy it on its own destroy (U5,
+// decisions/0005): ownership stays with the caller. This simulates a buggy
+// teardown that reaches through and destroys the caller ticker, and asserts the
+// t5 ownership gate (caller ticker survives) DETECTS it. Correct precisely when
+// the caller ticker ends up destroyed (the gate must fail on that).
+export async function runTickerOwnershipControl() {
+    const container = makeContainer();
+    const clock = new FakeTicker();
+    const inst = mountUIFX(container, UIType.BUTTON, () => ({ tick() {} }), { ticker: clock });
+    // A CORRECT destroy removes the frame but leaves the clock alone; here we
+    // additionally perform the FORBIDDEN act a broken component would.
+    inst.destroy();
+    clock.destroy();               // the ownership violation the gate must catch
+    container.remove();
+    // Correct when the violation is DETECTABLE (t5 asserts clock.destroyed === false).
+    return { failed: clock.destroyed === true, destroyed: clock.destroyed };
 }

@@ -54,8 +54,20 @@ describe('U3b theming -- RECIPE_META flags', () => {
     it('themeable is true for all 56 recipes', () => {
         for (const m of RECIPE_META) assert.equal(m.themeable, true, m.id + ' should be themeable');
     });
-    it('motionSafe stays false for all 56 (reduced motion is a later pass)', () => {
-        for (const m of RECIPE_META) assert.equal(m.motionSafe, false, m.id + ' motionSafe');
+    it('motionSafe is true for EXACTLY the U5 calm-path recipes, false otherwise', () => {
+        // U5 (decisions/0005): motionSafe is true for exactly the recipes that
+        // ship a reduced-motion calm path -- SwarmToggle (reference) + the five
+        // decorate recipes. Every other recipe stays honestly false until it lands
+        // its own calm path. This gate is what keeps motionSafe from lying.
+        const SAFE = new Set([
+            'swarmToggle', 'passwordStrength', 'typewriterField',
+            'focusHalo', 'errorShake', 'successBloom',
+        ]);
+        for (const m of RECIPE_META) {
+            assert.equal(m.motionSafe, SAFE.has(m.id), m.id + ' motionSafe');
+        }
+        // Guard the count so a future flip cannot silently drift this gate.
+        assert.equal(RECIPE_META.filter((m) => m.motionSafe).length, SAFE.size, 'motionSafe count');
     });
 });
 

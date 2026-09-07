@@ -7,7 +7,7 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { installDom, makeContainer, headChildCount, emitDpr, setDpr, EventStub } from './harness/dom-stub.mjs';
+import { installDom, makeContainer, headChildCount, emitDpr, setDpr, EventStub, emitReducedMotion, FakeTicker } from './harness/dom-stub.mjs';
 import * as raf from './harness/raf-stub.mjs';
 
 installDom();
@@ -819,5 +819,127 @@ describe('U4b decorate mode', () => {
         assert.equal(init.calls.length, 1, 'init called once at mount');
         i.destroy();
         assert.equal(destroy.calls.length, 1, 'recipe.destroy called once');
+    });
+});
+
+// ---------------------------------------------------------------------------
+//  U5 -- host integration: caller ticker / driven clock, reduced motion, budget
+// ---------------------------------------------------------------------------
+
+describe('U5 host integration', () => {
+    let ctr;
+    beforeEach(() => { ctr = makeContainer(); });
+    afterEach(() => {
+        ctr.remove();
+        emitReducedMotion(false);   // never leak reduce state into the next test
+        assert.equal(raf.pending(), 0, 'raf queue must drain to 0 after each test');
+    });
+
+    function host(w = 200, h = 28) {
+        const el = document.createElement('input');
+        el.offsetWidth = w; el.offsetHeight = h;
+        ctr.appendChild(el);
+        return el;
+    }
+
+    // -- clock ownership (both modes) --
+
+    it('default mount rides the shared ticker (a RAF is scheduled)', () => {
+        const i = mountUIFX(ctr, UIType.BUTTON, recipe());
+        assert.ok(raf.pending() >= 1, 'shared ticker scheduled a RAF');
+        i.destroy();
+        assert.equal(raf.pending(), 0, 'destroy drained the shared ticker');
+    });
+
+    it('{ ticker } borrows a caller clock: no shared RAF, caller drives frames', () => {
+        const clock = new FakeTicker();
+        const tick = makeSpy();
+        const i = mountUIFX(ctr, UIType.BUTTON, recipe({ tick }), { ticker: clock });
+        assert.equal(raf.pending(), 0, 'no shared ticker acquired');
+        assert.equal(clock.size, 1, 'registered on the caller ticker');
+        clock.tick(16); clock.tick(16);
+        assert.equal(tick.calls.length, 2, 'caller ticker drives recipe.tick');
+        i.destroy();
+        assert.equal(clock.size, 0, 'destroy removed the component from the caller ticker');
+        assert.equal(clock.destroyed, false, 'destroy NEVER destroys the caller ticker (ownership stays with the caller)');
+    });
+
+    it('{ driven } schedules no clock at all; instance.tick(dt) drives it', () => {
+        const tick = makeSpy();
+        const i = mountUIFX(ctr, UIType.BUTTON, recipe({ tick }), { driven: true });
+        assert.equal(raf.pending(), 0, 'no RAF scheduled in driven mode');
+        assert.equal(typeof i.tick, 'function', 'driven instance exposes tick()');
+        i.tick(16); i.tick(16); i.tick(16);
+        assert.equal(tick.calls.length, 3, 'instance.tick drives recipe.tick');
+        i.destroy();
+    });
+
+    it('tick() fails closed on a non-driven instance', () => {
+        const i = mountUIFX(ctr, UIType.BUTTON, recipe());
+        assert.throws(() => i.tick(16), /driven/, 'a ticker-driven component rejects hand-driven frames');
+        i.destroy();
+    });
+
+    it('clock options fail closed (mutual exclusivity, boolean, duck-type)', () => {
+        assert.throws(() => mountUIFX(ctr, UIType.BUTTON, recipe(), { ticker: new FakeTicker(), driven: true }), /mutually exclusive/);
+        assert.throws(() => mountUIFX(ctr, UIType.BUTTON, recipe(), { driven: 'yes' }), /boolean/);
+        assert.throws(() => mountUIFX(ctr, UIType.BUTTON, recipe(), { ticker: {} }), /\.add/);
+        assert.throws(() => mountUIFX(ctr, UIType.BUTTON, recipe(), { ticker: null }), /\.add/);
+        assert.equal(ctr.children.length, 0, 'a rejected mount leaves no orphan');
+    });
+
+    // -- reduced motion --
+
+    it('state.reducedMotion reads the initial media state before init', () => {
+        emitReducedMotion(true);
+        let seen = null;
+        const i = mountUIFX(ctr, UIType.BUTTON, recipe({ init: () => {}, tick: () => {} }));
+        seen = i.state.reducedMotion;
+        assert.equal(seen, true, 'reducedMotion true at mount when the user prefers reduce');
+        i.destroy();
+    });
+
+    it('state.reducedMotion follows media changes and tears down on destroy', () => {
+        const i = mountUIFX(ctr, UIType.BUTTON, recipe());
+        assert.equal(i.state.reducedMotion, false, 'default: full motion');
+        emitReducedMotion(true);
+        assert.equal(i.state.reducedMotion, true, 'flips true on media change');
+        emitReducedMotion(false);
+        assert.equal(i.state.reducedMotion, false, 'flips back false');
+        i.destroy();
+    });
+
+    it('decorate mode gets reduced motion + a driven clock too', () => {
+        emitReducedMotion(true);
+        const el = host();
+        const tick = makeSpy();
+        const i = decorateUIFX(el, recipe({ tick }), { driven: true });
+        assert.equal(i.state.reducedMotion, true, 'decorate reads reduce at mount');
+        assert.equal(raf.pending(), 0, 'driven decorate schedules no RAF');
+        i.tick(16);
+        assert.equal(tick.calls.length, 1, 'driven decorate ticks by hand');
+        i.destroy();
+    });
+
+    it('decorate { ticker } never destroys the caller ticker', () => {
+        const el = host();
+        const clock = new FakeTicker();
+        const i = decorateUIFX(el, recipe(), { ticker: clock });
+        assert.equal(clock.size, 1);
+        i.destroy();
+        assert.equal(clock.size, 0, 'removed from the caller ticker');
+        assert.equal(clock.destroyed, false, 'caller ticker survives the decoration');
+    });
+
+    // -- frame budget --
+
+    it('state.budget starts at 1 and degrades as frame dt grows', () => {
+        const i = mountUIFX(ctr, UIType.BUTTON, recipe(), { driven: true });
+        assert.equal(i.state.budget, 1, 'budget starts full');
+        for (let k = 0; k < 20; k++) i.tick(1000 / 60);   // healthy ~60fps frames
+        assert.ok(i.state.budget > 0.99, 'healthy frames keep budget ~1: ' + i.state.budget);
+        for (let k = 0; k < 20; k++) i.tick(100);          // 10fps -- long frames
+        assert.ok(i.state.budget < 0.9, 'long frames degrade budget: ' + i.state.budget);
+        i.destroy();
     });
 });

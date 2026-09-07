@@ -7,7 +7,8 @@
 // is written to stderr so stdout stays exactly "ok".
 //
 // TORTURE_CONTROL=alloc|listener|double-toggle|validation-bypass|
-// decorate-host-mutation activates one deliberately-broken t9 control; that run
+// decorate-host-mutation|fake-calm|ticker-ownership activates one
+// deliberately-broken t9 control; that run
 // MUST exit non-zero (the gate proving it can fail).
 //
 // Requires --expose-gc: the retention settle and the gc gate both need it.
@@ -90,8 +91,30 @@ if (control) {
         process.exit(2);
     }
 
+    if (control === 'fake-calm') {
+        const r = await t9.runFakeCalmControl();
+        console.error('control=fake-calm moved-under-reduce=' + r.failed + ' distinctX=' + r.distinct);
+        if (r.failed) {
+            console.error('CONTROL fake-calm correctly MOVED under reduced motion (the reduce assertion would fail) (exit 1)');
+            process.exit(1);
+        }
+        console.error('CONTROL fake-calm stayed static -- the reduce gate is decorative');
+        process.exit(2);
+    }
+
+    if (control === 'ticker-ownership') {
+        const r = await t9.runTickerOwnershipControl();
+        console.error('control=ticker-ownership caller-ticker-destroyed=' + r.failed);
+        if (r.failed) {
+            console.error('CONTROL ticker-ownership correctly DESTROYED the caller ticker (t5 ownership gate would fail) (exit 1)');
+            process.exit(1);
+        }
+        console.error('CONTROL ticker-ownership left the caller ticker alive -- the ownership gate is decorative');
+        process.exit(2);
+    }
+
     console.error('unknown TORTURE_CONTROL: ' + control +
-        ' (want alloc|listener|double-toggle|validation-bypass|decorate-host-mutation)');
+        ' (want alloc|listener|double-toggle|validation-bypass|decorate-host-mutation|fake-calm|ticker-ownership)');
     process.exit(1);
 }
 
@@ -124,7 +147,7 @@ const r4 = await tier('t4-soak', runT4);
 await tier('t5-scale', runT5);
 
 // t5 IS imported and executed above; it is partially filled, not skipped.
-console.error('partial tier=t5-scale (U-02 regression + single-RAF; scale-cost/alloc in U3/U5)');
+console.error('partial tier=t5-scale (U-02 regression + single-RAF + U5 host-clock ownership; scale-cost/alloc left)');
 
 // GATE diagnostic. The gc/alloc numbers come from a zero-alloc no-op recipe
 // smoke (a POSITIVE control: the gc + alloc gates wired and green on a hot path

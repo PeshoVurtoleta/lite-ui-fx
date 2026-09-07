@@ -6,7 +6,7 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { installDom, makeContainer } from './harness/dom-stub.mjs';
+import { installDom, makeContainer, emitReducedMotion } from './harness/dom-stub.mjs';
 import * as raf from './harness/raf-stub.mjs';
 
 installDom();
@@ -181,6 +181,42 @@ describe('mountRecipe fail-closed', () => {
         inst.destroy();
         assert.equal(container.children.length, before, 'overlay removed on destroy (host untouched)');
         assert.equal(raf.pending(), 0, 'raf pending returns to 0');
+    });
+});
+
+describe('mountRecipe reduced-motion advisory (U5)', () => {
+    function warnCount(fn) {
+        const orig = console.warn;
+        let n = 0, msg = '';
+        console.warn = (...a) => { n++; msg = String(a[0]); };
+        try { fn(); } finally { console.warn = orig; }
+        return { n, msg };
+    }
+
+    it('warns (not throws) mounting a motionSafe:false recipe under active reduce', () => {
+        emitReducedMotion(true);
+        let inst;
+        const { n, msg } = warnCount(() => { inst = mountRecipe(container, 'liquidToggle'); });
+        emitReducedMotion(false);
+        assert.equal(n, 1, 'exactly one advisory warning');
+        assert.match(msg, /reduced motion/i, 'the warning explains why');
+        inst.destroy();
+    });
+
+    it('does NOT warn for a motionSafe recipe under reduce (it has a calm path)', () => {
+        emitReducedMotion(true);
+        let inst;
+        const { n } = warnCount(() => { inst = mountRecipe(container, 'swarmToggle'); });
+        emitReducedMotion(false);
+        assert.equal(n, 0, 'a calm-path recipe never warns');
+        inst.destroy();
+    });
+
+    it('does NOT warn when the user does not prefer reduced motion', () => {
+        let inst;
+        const { n } = warnCount(() => { inst = mountRecipe(container, 'liquidToggle'); });
+        assert.equal(n, 0, 'no warning without active reduce');
+        inst.destroy();
     });
 });
 

@@ -70,11 +70,43 @@ The controller provides this every frame:
     h: number,          // Element height
     padding: number,    // Canvas overflow padding
     dpr: number,        // Device pixel ratio
+    reducedMotion: boolean, // U5: user prefers reduced motion (see below)
+    budget: number,     // U5: 0--1 frame budget (1 at ~60fps, lower under load)
     // Decorate mode only (decorateUIFX): the live host's value + validity.
     text: string,       // the host form-control's value string ('' if none)
     valid: boolean,     // the host's validity (el.validity.valid, else true)
 }
 ```
+
+## Reduced Motion & Frame Budget (U5)
+
+Two state fields let a recipe be a good citizen without changing the interface.
+
+- **`state.reducedMotion`** is `true` when the user has set
+  `prefers-reduced-motion: reduce`. A recipe that animates should read it and
+  render a **static** alternative -- no continuous motion, no bursts, no shakes.
+  Fades and instant state changes are fine; sustained or positional motion is not.
+  When your recipe ships such a calm path, set its `RECIPE_META.motionSafe: true`;
+  that flag is a promise the calm path exists, so keep them in sync.
+
+  ```javascript
+  tick(c, dt, now, st) {
+      // full motion vs. a steady, motion-free render
+      const wobble = st.reducedMotion ? 0 : Math.sin(now / 200) * 4;
+      // ... draw using `wobble` (0 = no motion) ...
+  }
+  ```
+
+- **`state.budget`** is `1` when frames are healthy and drops toward `0` as they
+  lengthen. A budget-aware recipe scales expensive work by it (fewer particles,
+  less glow) so it degrades before the host drops frames. Consuming it is optional.
+
+  ```javascript
+  const live = (this.count = Math.floor(MAX_PARTICLES * st.budget));
+  ```
+
+Both are read-only per-frame numbers -- never write them, never allocate to honour
+them (a branch on a boolean/number is free; a new array per frame is not).
 
 ## The Pointer Object
 

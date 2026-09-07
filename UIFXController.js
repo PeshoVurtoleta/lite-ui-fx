@@ -22,7 +22,7 @@ import { Ticker } from '@zakkster/lite-ticker';
 
 // Three-place version sync: this constant, package.json "version", and the
 // VERSION line in llms.txt must always match. /release keeps them locked.
-export const VERSION = '1.6.0';
+export const VERSION = '1.7.0';
 
 // ---------------------------------------------------------
 //  SHARED TICKER (ref-counted, one RAF for all UI components)
@@ -80,18 +80,50 @@ function releaseSliderStyle() {
 
 
 // ---------------------------------------------------------
+//  HOST CLOCK + FRAME STATE (U5) -- shared by both mount modes
+// ---------------------------------------------------------
+
+// Frame budget (state.budget, 0..1): 1 when frames hit ~60fps, degrading as the
+// frame delta grows so budget-aware recipes shed work BEFORE frames drop. A
+// smoothed instantaneous ratio -- zero allocation (module consts + arithmetic on
+// the dt the clock already provides; no extra clock read).
+const _TARGET_DT = 1 / 60;    // seconds per frame at 60fps
+const _BUDGET_SMOOTH = 0.1;   // EMA weight toward the instantaneous ratio
+
+// prefers-reduced-motion query, created once at mount (cold). Returns null when
+// matchMedia is absent -- fail closed: state.reducedMotion then stays false and
+// every recipe renders its full-motion path, never throwing. The caller reads
+// .matches into state BEFORE recipe.init, then wires the change listener once the
+// AbortController exists (so teardown removes it). One helper, both mount modes.
+function _reducedMotionQuery() {
+    return (typeof window.matchMedia === 'function')
+        ? window.matchMedia('(prefers-reduced-motion: reduce)')
+        : null;
+}
+
+// instance.tick() outside { driven } mode. A shared module stub (not a per-mount
+// closure) so a ticker-driven component allocates nothing for a member it fails
+// closed on: a component that rides a ticker does not accept hand-driven frames.
+function _drivenOnly() {
+    throw new Error('tick(dtMs) is only callable in driven mode ({ driven: true }); this component rides a ticker');
+}
+
+
+// ---------------------------------------------------------
 //  MOUNT-TIME VALIDATION (cold path only -- never a hot body)
 // ---------------------------------------------------------
 
 const KNOWN_HOOKS = ['init', 'tick', 'onHover', 'onLeave', 'onClick', 'onToggle', 'onDrag', 'destroy'];
-const KNOWN_OPTIONS = ['width', 'height', 'padding', 'label', 'value', 'checked', 'disabled', 'seed', 'colors', 'theme', 'text', 'font', 'knobMode', 'announce'];
+const KNOWN_OPTIONS = ['width', 'height', 'padding', 'label', 'value', 'checked', 'disabled', 'seed', 'colors', 'theme', 'text', 'font', 'knobMode', 'announce', 'ticker', 'driven'];
 const KNOB_MODES = ['rotate', 'vertical'];
 
 // Options valid in decorate mode (decorateUIFX). A canvas AROUND a live element
 // inherits the host's geometry (offset box) and value (read from el), so the
 // hijack-only options (width/height/value/checked/disabled/knobMode/announce/
-// label) are rejected here -- fail closed. Cold: read only at mount.
-const DECORATE_OPTIONS = ['padding', 'seed', 'colors', 'theme', 'text', 'font'];
+// label) are rejected here -- fail closed. The host-clock options (ticker/driven)
+// ARE valid in decorate mode: a decoration wants host-clock control every bit as
+// much as a hijack does. Cold: read only at mount.
+const DECORATE_OPTIONS = ['padding', 'seed', 'colors', 'theme', 'text', 'font', 'ticker', 'driven'];
 
 // Levenshtein edit distance. Cold: only reached on the error path.
 function _editDistance(a, b) {
@@ -247,6 +279,25 @@ export function mountUIFX(container, type, recipeFactory, options = {}) {
     if (options.seed !== undefined &&
         (typeof options.seed !== 'number' || !Number.isFinite(options.seed))) {
         throw new Error('mountUIFX: option "seed" must be a finite number');
+    }
+
+    // Host clock (U5, decisions/0005). Three mutually-exclusive modes, resolved
+    // once here (cold): default -> the shared ref-counted ticker; { ticker } -> a
+    // caller-supplied lite-ticker drives this component; { driven:true } -> no
+    // ticker/RAF, the host calls instance.tick(dtMs). Both-passed, a non-boolean
+    // driven, or a ticker missing .add() is an Error, never a silent pick.
+    const callerTicker = options.ticker;
+    if (options.driven !== undefined && typeof options.driven !== 'boolean') {
+        throw new Error('mountUIFX: option "driven" must be a boolean');
+    }
+    const driven = options.driven === true;
+    if (callerTicker !== undefined) {
+        if (driven) {
+            throw new Error('mountUIFX: options "ticker" and "driven" are mutually exclusive');
+        }
+        if (!callerTicker || typeof callerTicker.add !== 'function') {
+            throw new Error('mountUIFX: option "ticker" must be a ticker with an .add(fn) method');
+        }
     }
 
     // Type-scoped options (U4a). knobMode belongs only to a KNOB; announce only
@@ -415,6 +466,10 @@ export function mountUIFX(container, type, recipeFactory, options = {}) {
     }
     let _lastAnnouncePct = -1;  // last announced 10% step (cold: only setValue writes)
 
+    // prefers-reduced-motion query (U5): read its initial value into state below,
+    // BEFORE recipe.init, so a recipe reading state.reducedMotion in init is right.
+    const rmq = _reducedMotionQuery();
+
     // -- State (value/checked/disabled land here BEFORE frame 1) --
     const state = {
         hover: false,
@@ -424,6 +479,8 @@ export function mountUIFX(container, type, recipeFactory, options = {}) {
         indeterminate: false,  // CHECKBOX only; set via setValue(null)
         disabled,           // recipes can render a disabled look
         val: value !== undefined ? value : (type === UIType.SLIDER || type === UIType.KNOB ? 0.5 : 0),  // 0-1
+        reducedMotion: rmq ? !!rmq.matches : false,  // U5: calm-path recipes honour it
+        budget: 1,          // U5: 0..1 frame budget, updated in place per frame
         w, h, padding, dpr,
     };
 
@@ -583,16 +640,30 @@ export function mountUIFX(container, type, recipeFactory, options = {}) {
         }, { signal });
     }
 
-    // -- Render loop (shared ticker) --
-    const ticker = acquireTicker();
-    tickerAcquired = true;
+    // -- Reduced-motion change watch (U5). Cold; through signal so destroy removes
+    //    it. The initial value was already read into state above. --
+    if (rmq) {
+        rmq.addEventListener('change', () => { state.reducedMotion = !!rmq.matches; }, { signal });
+    }
+
+    // -- Render loop. The frame body is ONE named function so all three clock
+    //    modes invoke the SAME code with no wrapper: default and { ticker } pass
+    //    `frame` to a ticker's .add(); { driven } exposes it as instance.tick. --
     let destroyed = false;
     let quarantined = false;  // a recipe.tick throw quarantines only this one
 
-    removeTick = ticker.add((dtMs) => {
+    function frame(dtMs) {
         if (destroyed || quarantined) return;
         const dt = dtMs / 1000;
         const now = performance.now();
+
+        // Frame budget (U5): update in place from the dt already in hand -- no
+        // allocation, no extra clock read.
+        if (dt > 0) {
+            let inst = _TARGET_DT / dt;
+            if (inst > 1) inst = 1; else if (inst < 0) inst = 0;
+            state.budget += (inst - state.budget) * _BUDGET_SMOOTH;
+        }
 
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, cw, ch);
@@ -610,7 +681,20 @@ export function mountUIFX(container, type, recipeFactory, options = {}) {
             return;
         }
         ctx.restore();
-    });
+    }
+
+    // Clock mode (validated cold in phase 1). Only the shared path acquires the
+    // ref-counted ticker; { ticker } borrows the host's clock and must never
+    // destroy it; { driven } schedules no RAF (the host calls instance.tick).
+    if (driven) {
+        // no ticker acquired; removeTick stays null
+    } else if (callerTicker !== undefined) {
+        removeTick = callerTicker.add(frame);
+    } else {
+        const ticker = acquireTicker();
+        tickerAcquired = true;
+        removeTick = ticker.add(frame);
+    }
 
     // -- Public API --
     return {
@@ -625,6 +709,14 @@ export function mountUIFX(container, type, recipeFactory, options = {}) {
 
         /** Current state (read-only reference). */
         state,
+
+        /**
+         * Drive one frame by hand (U5). Callable ONLY in { driven: true } mode:
+         * it IS the internal frame body, so a driven host pays exactly the internal
+         * per-frame cost (no wrapper). A ticker-driven component owns its own clock,
+         * so its tick() fails closed.
+         */
+        tick: driven ? frame : _drivenOnly,
 
         /**
          * Programmatically set a valued control (SLIDER/KNOB/PROGRESS) to v in
@@ -675,9 +767,9 @@ export function mountUIFX(container, type, recipeFactory, options = {}) {
             if (destroyed) return;
             destroyed = true;
             ac.abort();
-            removeTick();
+            if (removeTick) removeTick();        // shared OR caller ticker; null when driven
             if (recipe.destroy) recipe.destroy();
-            releaseTicker();
+            if (tickerAcquired) releaseTicker();  // release ONLY the shared ticker we acquired -- never a caller's
             if (type === UIType.SLIDER || type === UIType.KNOB) releaseSliderStyle();
             wrapper.remove();
         },
@@ -689,10 +781,8 @@ export function mountUIFX(container, type, recipeFactory, options = {}) {
         // ticker exist) never releases a ticker or aborts an ac that was never
         // created. recipe.destroy() is deliberately NOT called: init did not
         // succeed, so there is no initialised recipe to tear down.
-        if (tickerAcquired) {
-            if (removeTick) removeTick();
-            releaseTicker();
-        }
+        if (removeTick) removeTick();          // shared OR caller ticker -- both must unwind
+        if (tickerAcquired) releaseTicker();   // release ONLY the shared ticker we acquired
         if (acCreated) ac.abort();
         if (wrapperAppended) wrapper.remove();
         if (styleAcquired) releaseSliderStyle();
@@ -780,6 +870,22 @@ export function decorateUIFX(el, recipeFactory, options = {}) {
         throw new Error('decorateUIFX: option "seed" must be a finite number');
     }
 
+    // Host clock (U5, decisions/0005) -- same three modes as mountUIFX. A
+    // decoration wants host-clock control every bit as much as a hijack does.
+    const callerTicker = options.ticker;
+    if (options.driven !== undefined && typeof options.driven !== 'boolean') {
+        throw new Error('decorateUIFX: option "driven" must be a boolean');
+    }
+    const driven = options.driven === true;
+    if (callerTicker !== undefined) {
+        if (driven) {
+            throw new Error('decorateUIFX: options "ticker" and "driven" are mutually exclusive');
+        }
+        if (!callerTicker || typeof callerTicker.add !== 'function') {
+            throw new Error('decorateUIFX: option "ticker" must be a ticker with an .add(fn) method');
+        }
+    }
+
     // 3. recipeFactory + recipe object + hooks (same contract as mountUIFX).
     if (typeof recipeFactory !== 'function') {
         throw new Error('decorateUIFX: recipeFactory must be a function');
@@ -840,6 +946,10 @@ export function decorateUIFX(el, recipeFactory, options = {}) {
     el.parentNode.insertBefore(canvas, el.nextSibling);
     canvasAppended = true;
 
+    // prefers-reduced-motion query (U5): initial value read into state below,
+    // BEFORE recipe.init (same as mountUIFX).
+    const rmq = _reducedMotionQuery();
+
     // -- State. Generic fields wire like hijack mode; text/valid mirror the host,
     //    read now at init (law: hook initial values from the element) and refreshed
     //    at event time only. --
@@ -849,6 +959,8 @@ export function decorateUIFX(el, recipeFactory, options = {}) {
         focused: (typeof document !== 'undefined' && document.activeElement === el),
         text: (typeof el.value === 'string' ? el.value : ''),
         valid: (el.validity ? !!el.validity.valid : true),
+        reducedMotion: rmq ? !!rmq.matches : false,  // U5: calm-path recipes honour it
+        budget: 1,          // U5: 0..1 frame budget, updated in place per frame
         w: ow, h: oh, padding, dpr,
     };
     const pointer = { x: -999, y: -999, vx: 0, vy: 0 };
@@ -948,16 +1060,27 @@ export function decorateUIFX(el, recipeFactory, options = {}) {
         }, { signal });
     }
 
-    // -- Render loop (shared ticker; same quarantine-on-throw as mountUIFX). --
-    const ticker = acquireTicker();
-    tickerAcquired = true;
+    // -- Reduced-motion change watch (U5). Cold; through signal. --
+    if (rmq) {
+        rmq.addEventListener('change', () => { state.reducedMotion = !!rmq.matches; }, { signal });
+    }
+
+    // -- Render loop. ONE named frame body; three clock modes invoke it with no
+    //    wrapper (same as mountUIFX). Same quarantine-on-throw. --
     let destroyed = false;
     let quarantined = false;
 
-    removeTick = ticker.add((dtMs) => {
+    function frame(dtMs) {
         if (destroyed || quarantined) return;
         const dt = dtMs / 1000;
         const now = performance.now();
+
+        // Frame budget (U5): update in place, no allocation.
+        if (dt > 0) {
+            let inst = _TARGET_DT / dt;
+            if (inst > 1) inst = 1; else if (inst < 0) inst = 0;
+            state.budget += (inst - state.budget) * _BUDGET_SMOOTH;
+        }
 
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, cw, ch);
@@ -973,7 +1096,19 @@ export function decorateUIFX(el, recipeFactory, options = {}) {
             return;
         }
         ctx.restore();
-    });
+    }
+
+    // Clock mode (validated cold in phase 1). Shared ticker / caller ticker /
+    // driven -- identical to mountUIFX.
+    if (driven) {
+        // no ticker acquired; removeTick stays null
+    } else if (callerTicker !== undefined) {
+        removeTick = callerTicker.add(frame);
+    } else {
+        const ticker = acquireTicker();
+        tickerAcquired = true;
+        removeTick = ticker.add(frame);
+    }
 
     // -- Public API --
     return {
@@ -985,6 +1120,12 @@ export function decorateUIFX(el, recipeFactory, options = {}) {
 
         /** Current state (read-only reference). */
         state,
+
+        /**
+         * Drive one frame by hand (U5). Callable ONLY in { driven: true } mode; it
+         * IS the internal frame body. A ticker-driven decoration fails closed.
+         */
+        tick: driven ? frame : _drivenOnly,
 
         /**
          * Hijack-only. A decoration reflects the host; it does not own or push
@@ -1004,9 +1145,9 @@ export function decorateUIFX(el, recipeFactory, options = {}) {
             if (destroyed) return;
             destroyed = true;
             ac.abort();
-            removeTick();
+            if (removeTick) removeTick();        // shared OR caller ticker; null when driven
             if (recipe.destroy) recipe.destroy();
-            releaseTicker();
+            if (tickerAcquired) releaseTicker();  // release ONLY the shared ticker we acquired
             canvas.remove();  // the ONLY DOM node decorate added
         },
     };
@@ -1014,10 +1155,8 @@ export function decorateUIFX(el, recipeFactory, options = {}) {
         // A phase-2 step threw (realistically recipe.init). Unwind ONLY what was
         // acquired, reverse order, each flag-guarded. recipe.destroy is NOT called
         // (init did not succeed). Re-throw the ORIGINAL error, unwrapped.
-        if (tickerAcquired) {
-            if (removeTick) removeTick();
-            releaseTicker();
-        }
+        if (removeTick) removeTick();          // shared OR caller ticker -- both must unwind
+        if (tickerAcquired) releaseTicker();   // release ONLY the shared ticker we acquired
         if (acCreated) ac.abort();
         if (canvasAppended) canvas.remove();
         throw err;

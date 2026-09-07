@@ -24,6 +24,8 @@ function baseState() {
         val: 0.5, w: 160, h: 48, padding: 40, dpr: 1,
         // Decorate-mode fields (U4b): a form-control host's value + validity.
         text: '', valid: true,
+        // Host-clock fields (U5): reduced-motion flag + frame budget.
+        reducedMotion: false, budget: 1,
     };
 }
 
@@ -45,6 +47,10 @@ function makeChurn(type) {
         if ((i & 15) === 0) { st.hover = true; if (recipe.onHover) recipe.onHover(st, ptr); }
         else if ((i & 15) === 8) { st.hover = false; if (recipe.onLeave) recipe.onLeave(st, ptr); }
         st.focused = (i & 63) < 32;
+        // U5: cycle reduced motion so BOTH the full-motion and calm branches of
+        // every recipe are inside the alloc window -- a calm path that allocated
+        // would trip the same t3 gate. (Recipes that ignore the flag are unaffected.)
+        st.reducedMotion = (i & 127) < 32;
         if (valued) {
             const v = (Math.sin(i * 0.06) + 1) * 0.5;
             ptr.vx = (v - st.val) * 60; st.val = v;

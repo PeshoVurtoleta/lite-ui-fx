@@ -27,6 +27,12 @@ export interface UIFXState {
     h: number;
     padding: number;
     dpr: number;
+    /** U5: true when the user prefers reduced motion (matchMedia). Calm-path
+     *  recipes render statically when set; recipes that ignore it animate. */
+    reducedMotion: boolean;
+    /** U5: frame budget in 0..1 -- 1 at ~60fps, lower as frames lengthen.
+     *  Budget-aware recipes shed work (particles/glow) when it drops. */
+    budget: number;
     /** Decorate mode only (decorateUIFX): the host form-control's current value.
      *  Absent for hijack mounts and for a non-form host (then ''). */
     text?: string;
@@ -61,7 +67,30 @@ export interface UIFXRecipe {
 
 export type RecipeFactory = () => UIFXRecipe;
 
-export interface MountOptions {
+/**
+ * A caller-supplied clock for the { ticker } host-clock mode (U5). Duck-typed to
+ * @zakkster/lite-ticker: it must expose add(fn) returning a remove function. The
+ * component registers its frame on it and, on destroy, removes that frame but
+ * NEVER destroys the ticker -- ownership stays with the caller.
+ */
+export interface HostTicker {
+    add(fn: (dtMs: number) => void): () => void;
+}
+
+/**
+ * Host-clock options (U5, decisions/0005), shared by both mount modes. Three
+ * mutually-exclusive modes: omit both for the shared ref-counted ticker (default);
+ * `ticker` to ride a caller-supplied clock; `driven: true` for no clock at all
+ * (the host calls instance.tick(dtMs)). Passing both throws.
+ */
+export interface HostClockOptions {
+    /** Ride a caller-supplied ticker instead of the shared one. Mutually exclusive with `driven`. */
+    ticker?: HostTicker;
+    /** No ticker/RAF: the host drives frames via instance.tick(dtMs). Mutually exclusive with `ticker`. */
+    driven?: boolean;
+}
+
+export interface MountOptions extends HostClockOptions {
     width?: number;
     height?: number;
     padding?: number;
@@ -97,7 +126,7 @@ export interface MountOptions {
  * the hijack-only options (width/height/value/checked/disabled/knobMode/announce/
  * label) are rejected -- passing one throws (fail closed).
  */
-export interface DecorateOptions {
+export interface DecorateOptions extends HostClockOptions {
     /** Overlay padding around the host, in px (default 40). */
     padding?: number;
     seed?: number;
@@ -112,6 +141,14 @@ export interface UIFXInstance {
     canvas: HTMLCanvasElement;
     wrapper: HTMLDivElement;
     state: UIFXState;
+
+    /**
+     * Drive one frame by hand (U5). Callable ONLY when mounted with { driven: true }
+     * -- it is the internal frame body, so a driven host pays exactly the internal
+     * per-frame cost. On a ticker-driven component it throws (that component owns
+     * its own clock).
+     */
+    tick(dtMs: number): void;
 
     /**
      * Set a valued control (SLIDER/KNOB/PROGRESS) to v in [0,1]: updates the
@@ -150,6 +187,9 @@ export interface DecorateInstance {
     /** The overlay canvas (the only DOM node decorate adds). */
     canvas: HTMLCanvasElement;
     state: UIFXState;
+    /** Drive one frame by hand (U5). Callable ONLY with { driven: true }; a
+     *  ticker-driven decoration throws. */
+    tick(dtMs: number): void;
     /** Hijack-only. Throws in decorate mode. */
     setValue(v?: number | null): void;
     /** Hijack-only. Throws in decorate mode. */

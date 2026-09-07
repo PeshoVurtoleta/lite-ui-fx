@@ -5,6 +5,49 @@ All notable changes to `@zakkster/lite-ui-fx` are documented here.
 The format follows Keep a Changelog; this project adheres to Semantic
 Versioning.
 
+## [1.7.0] -- 2026-09-07
+
+Host integration (roadmap U5). Two host-clock modes plus reduced-motion and a
+frame-budget signal, applied to BOTH mount modes (`mountUIFX` and `decorateUIFX`).
+Additive: a default mount is byte-identical to 1.6.0.
+
+### Added
+
+- `{ ticker }` mount option (both modes): a caller-supplied ticker
+  (`{ add(fn) -> removeFn }`, e.g. `@zakkster/lite-ticker`) drives the component
+  instead of the shared ref-counted ticker. `destroy()` unregisters the
+  component's frame but never destroys the caller's ticker (ownership stays with
+  the caller).
+- `{ driven: true }` mount option (both modes): no ticker and no RAF; the host
+  drives each frame via `instance.tick(dtMs)`. `instance.tick` is the internal
+  frame body in driven mode and throws otherwise. `{ ticker }` and `{ driven }`
+  are mutually exclusive; a non-boolean `driven` or a ticker without `.add()`
+  throws at mount.
+- `state.reducedMotion` (both modes): read from
+  `matchMedia('(prefers-reduced-motion: reduce)')` before `recipe.init` and
+  watched via the AbortController; absent `matchMedia` is a no-op (stays `false`).
+  Calm paths for six recipes -- `SwarmToggle`, `PasswordStrength`,
+  `TypewriterField`, `FocusHalo`, `ErrorShake`, `SuccessBloom`: under reduced
+  motion `ErrorShake` stops displacing, `SuccessBloom` spawns no particles, and
+  `SwarmToggle` rests its particles at formation.
+- `state.budget` (0..1, both modes): a per-frame frame-budget number (1 at
+  ~60fps, lower as frames lengthen), computed in place with no allocation, for
+  budget-aware recipes to shed work.
+- `mountRecipe` emits a `console.warn` (not a throw) when mounting a
+  `motionSafe:false` recipe while the user prefers reduced motion.
+- TypeScript: `HostTicker`, `HostClockOptions`, `state.reducedMotion` /
+  `state.budget`, and `instance.tick(dtMs)` on both instance types.
+- `decisions/0005-host-clock.md`. U5 coverage: t5 caller-ticker ownership +
+  driven determinism, t3 reduced-motion churn, and two t9 controls (`fake-calm`,
+  `ticker-ownership`). 177 -> 196 node:test tests; 5 -> 7 torture controls.
+
+### Changed
+
+- The per-mount frame loop is one named function shared by all three clock modes;
+  the default (shared-ticker) path is byte-identical to 1.6.0.
+- `RECIPE_META.motionSafe` is now `true` for six recipes (previously `false` for
+  all 56): it marks exactly the recipes that ship a reduced-motion calm path.
+
 ## [1.6.0] -- 2026-09-07
 
 Decorate mode (U4b, the second half of roadmap U4). A second public mount mode

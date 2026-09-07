@@ -8,13 +8,18 @@
 //      (its per-tick counter freezes, exactly one console.error), every other
 //      component keeps ticking, and the single RAF chain is undisturbed.
 //
-// LEFT FOR U3/U5: the scale-cost / per-frame allocation gate at N components
-// (structural frame-alloc). U1 proves survival + single-RAF only; no alloc gate
-// here yet. Do not widen any budget to stand this in for that work.
+// U5 ADDS: the host-clock scale gate -- one CALLER ticker drives many components
+// (hijack + decorate) with no shared RAF, ownership stays with the caller, and a
+// driven component runs off no clock at all (the ownership gate the t9
+// ticker-ownership control is calibrated against).
+//
+// LEFT FOR LATER: the scale-cost / per-frame allocation gate at N components
+// (structural frame-alloc); per-recipe alloc is covered by t3. Do not widen any
+// budget to stand this in for that work.
 
 import assert from 'node:assert/strict';
 import { setMaxListeners } from 'node:events';
-import { mountUIFX, decorateUIFX, UIType, makeContainer, raf } from './harness.mjs';
+import { mountUIFX, decorateUIFX, UIType, makeContainer, raf, FakeTicker } from './harness.mjs';
 
 const N = 100;
 const BAD = 50;   // the component whose recipe throws mid-soak
@@ -106,5 +111,56 @@ export async function runT5() {
     for (let i = 0; i < N; i++) insts[i].destroy();
     assert.equal(raf.pending(), 0, 'shared RAF chain fully torn down after destroy');
 
-    return { components: N, quarantined: BAD, errCount };
+    // -------------------------------------------------------------------------
+    //  U5 host-clock scale: one CALLER ticker drives many components (hijack +
+    //  decorate) with NO shared RAF; ownership stays with the caller; a driven
+    //  component runs off no clock at all. This is the t5 ownership gate that the
+    //  t9 ticker-ownership control is calibrated against.
+    // -------------------------------------------------------------------------
+    const clock = new FakeTicker();
+    const M = 40;
+    const cinsts = new Array(M);
+    const ccounts = new Array(M);
+    for (let i = 0; i < M; i++) {
+        const c = { n: 0 };
+        ccounts[i] = c;
+        const factory = () => ({ tick() { c.n++; } });
+        const mode = MODES[i % MODES.length];
+        if (mode === 'decorate') {
+            const hostEl = document.createElement('input');
+            hostEl.offsetWidth = 120; hostEl.offsetHeight = 28;
+            container.appendChild(hostEl);
+            cinsts[i] = decorateUIFX(hostEl, factory, { ticker: clock });
+        } else {
+            cinsts[i] = mountUIFX(container, mode, factory, { ticker: clock });
+        }
+    }
+    // Borrowing a caller clock acquires NO shared ticker: the shared RAF stays 0.
+    assert.equal(raf.pending(), 0, '{ ticker } components acquire no shared RAF');
+    assert.equal(clock.size, M, 'all M components registered on the ONE caller ticker');
+
+    // Deterministic drive: every hand tick advances every component exactly once.
+    const CF = 12;
+    for (let f = 0; f < CF; f++) clock.tick(16);
+    for (let i = 0; i < M; i++) assert.equal(ccounts[i].n, CF, 'caller-ticked component ' + i + ' advanced deterministically');
+
+    // Destroying every component removes it from the caller ticker but NEVER
+    // destroys the caller's clock -- ownership stays with the caller (decisions/0005).
+    for (let i = 0; i < M; i++) cinsts[i].destroy();
+    assert.equal(clock.size, 0, 'destroy removed every component from the caller ticker');
+    assert.equal(clock.destroyed, false, 'the caller ticker SURVIVES component teardown (ownership gate)');
+    // A late tick on the (still-alive) caller clock advances nothing -- all removed.
+    for (let i = 0; i < M; i++) { const before = ccounts[i].n; clock.tick(16); assert.equal(ccounts[i].n, before, 'no component ticks after its destroy'); }
+    assert.equal(raf.pending(), 0, 'still no shared RAF after the caller-clock run');
+
+    // Driven mode: no clock at all; the host hand-drives, deterministically + no RAF.
+    const dcount = { n: 0 };
+    const driven = mountUIFX(container, UIType.BUTTON, () => ({ tick() { dcount.n++; } }), { driven: true });
+    assert.equal(raf.pending(), 0, 'driven mode schedules no RAF');
+    for (let f = 0; f < CF; f++) driven.tick(16);
+    assert.equal(dcount.n, CF, 'driven instance.tick advanced deterministically');
+    driven.destroy();
+    assert.equal(raf.pending(), 0, 'no shared RAF left by driven mode');
+
+    return { components: N, quarantined: BAD, errCount, callerTicked: M, driven: CF };
 }

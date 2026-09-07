@@ -1,7 +1,7 @@
 # @zakkster/lite-ui-fx
 > Canvas-hijacked UI components with pluggable recipe system. 56 built-in recipes.
 
-VERSION 1.6.0
+VERSION 1.7.0
 
 ## Install
 npm i @zakkster/lite-ui-fx
@@ -54,9 +54,23 @@ text      // visible canvas label; falls back to label, then the recipe default 
 font      // canvas font string; falls back to the recipe's historical font
 knobMode  // KNOB only: 'rotate' | 'vertical' pointer mapping (default 'rotate'); wrong type throws
 announce  // PROGRESS only: opt-in aria-live announcements at 10% steps; wrong type throws
-// decorateUIFX accepts a SUBSET: padding, seed, colors, theme, text, font. The
+ticker    // U5 host clock: a caller-supplied lite-ticker ({ add(fn)->removeFn }) drives this component
+driven    // U5 host clock: boolean; true = no ticker/RAF, the host calls instance.tick(dtMs)
+// decorateUIFX accepts a SUBSET: padding, seed, colors, theme, text, font -- PLUS
+// the host-clock keys ticker/driven (a decoration wants clock control too). The
 // hijack-only keys (width/height/value/checked/disabled/knobMode/announce/label)
 // throw in decorate mode -- geometry comes from the host, value is read from it.
+
+## Host clock (U5) -- three mutually-exclusive modes, both mount modes
+// default (neither option): the shared ref-counted ticker -- one RAF for all
+//   components, byte-identical to earlier versions.
+// { ticker: t }: a caller-supplied lite-ticker drives this component. destroy()
+//   removes the component's frame but NEVER destroys the caller's ticker.
+const inst = mountUIFX(container, UIType.SLIDER, SparkSlider, { ticker: myTicker });
+// { driven: true }: no ticker/RAF at all; the host drives each frame by hand.
+const d = mountUIFX(container, UIType.BUTTON, MagneticButton, { driven: true });
+d.tick(16.7);   // one frame; the SAME body the ticker would call. throws when NOT driven.
+// Passing both, a non-boolean driven, or a ticker without .add() throws (fail closed).
 
 ## Element Types
 UIType.TOGGLE   -> <input type="checkbox" role="switch"> -> state.toggled, onToggle(checked)
@@ -69,8 +83,13 @@ UIType.KNOB     -> <input type="range"> -> state.val, arrows native + knobMode p
                    RECIPE_META.type 'decorate' routes mountRecipe to decorateUIFX. State: focused + text + valid.
 
 ## State Object (provided to tick every frame)
-{ hover, active, focused, toggled, indeterminate, disabled, val, w, h, padding, dpr }
-// decorate mode adds: text (host value string), valid (host validity boolean).
+{ hover, active, focused, toggled, indeterminate, disabled, val, w, h, padding, dpr,
+  reducedMotion, budget }
+// reducedMotion (U5): boolean, true when the user prefers reduced motion; a
+//   calm-path recipe renders statically when set (RECIPE_META.motionSafe marks which).
+// budget (U5): 0..1 frame budget, 1 at ~60fps, lower as frames lengthen; budget-aware
+//   recipes shed work (particles/glow) when it drops.
+// decorate mode also adds: text (host value string), valid (host validity boolean).
 
 ## 56 Built-in Recipes
 
@@ -123,9 +142,19 @@ See UIFX-RECIPE-GUIDE.md (included in package).
   Gated per recipe by the t3-frame-alloc torture tier (default AND themed mount).
 - Themeable: all 56 recipes honour { colors, theme:{light,mid,dark}, text, font },
   resolved once in init (zero per-frame alloc). RECIPE_META.themeable is true for
-  all 56; motionSafe stays false (reduced motion is a later pass). A bare mount is
-  byte-identical to pre-theming. Shipped palettes + APCA contrast are authored with
-  @zakkster/lite-hueforge (a dev-only tool, never a runtime dependency).
+  all 56. A bare mount is byte-identical to pre-theming. Shipped palettes + APCA
+  contrast are authored with @zakkster/lite-hueforge (a dev-only tool, never a
+  runtime dependency).
+- U5 host clock: mount { ticker } to ride a caller-supplied lite-ticker (destroy
+  never destroys the caller's clock) or { driven:true } to drive instance.tick(dtMs)
+  by hand (no RAF); omit both for the shared ref-counted ticker. Default byte-identical.
+- U5 reduced motion: state.reducedMotion (matchMedia, watched) makes calm-path
+  recipes render statically -- ErrorShake stops shaking, SwarmToggle/SuccessBloom/
+  FocusHalo drop their motion. RECIPE_META.motionSafe is true for EXACTLY the
+  recipes that ship a calm path (SwarmToggle + the 5 decorate recipes today; the
+  rest honestly false until each lands one). mountRecipe warns (not throws) mounting
+  a motionSafe:false recipe under active reduce. state.budget (0..1) lets budget-aware
+  recipes shed work before frames drop.
 - U4a element types: CHECKBOX (indeterminate), PROGRESS (setValue-driven, aria-live
   opt-in), KNOB (knobMode pointer map); setValue/setChecked sync native+state+hook once.
 - U4b decorate mode (decorateUIFX): a canvas AROUND a live element -- no hijack, no

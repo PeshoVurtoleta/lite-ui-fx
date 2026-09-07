@@ -246,9 +246,11 @@ const _document = {
 
 let _installed = false;
 
-// Media-query objects created via window.matchMedia. emitDpr() drives them all
-// so the controller's DPR re-read path is testable. Cold; never on a hot body.
+// Media-query objects created via window.matchMedia. emitDpr() drives the
+// resolution queries and emitReducedMotion() drives the prefers-reduced-motion
+// queries (U5), so both controller watch paths are testable. Cold; never hot.
 const _mediaQueries = [];
+let _reducedMotion = false;   // current prefers-reduced-motion state (U5)
 
 function installDom({ dpr = 1 } = {}) {
     // window is an ElementStub so scroll/resize listeners (T6) and the DPR
@@ -259,9 +261,11 @@ function installDom({ dpr = 1 } = {}) {
     win.devicePixelRatio = dpr;
     win.matchMedia = function matchMedia(media) {
         const listeners = new Set();
+        const isRM = media.indexOf('prefers-reduced-motion') !== -1;
         const mql = {
-            matches: false,
+            matches: isRM ? _reducedMotion : false,
             media,
+            _isRM: isRM,
             addEventListener(type, fn, opts) {
                 if (typeof fn !== 'function') return;
                 const signal = opts && opts.signal;
@@ -271,7 +275,7 @@ function installDom({ dpr = 1 } = {}) {
                 // Honour { signal }: on abort, actually DROP the listener so a
                 // destroyed instance's change closure (which retains canvas/ctx/
                 // state) is released immediately -- not held until the next
-                // _emit. once:true self-removes the abort listener too, so this
+                // _fire. once:true self-removes the abort listener too, so this
                 // adds no residual retention of its own (NIT 2).
                 if (signal) {
                     signal.addEventListener('abort', () => { listeners.delete(rec); }, { once: true });
@@ -280,8 +284,9 @@ function installDom({ dpr = 1 } = {}) {
             removeEventListener(type, fn) {
                 for (const rec of listeners) if (rec.fn === fn) { listeners.delete(rec); break; }
             },
-            _emit(d) {
-                win.devicePixelRatio = d;
+            // Fire a 'change' at this query's current .matches (the driver -- emitDpr
+            // or emitReducedMotion -- sets the relevant global/matches first).
+            _fire() {
                 const ev = new EventStub('change');
                 for (const rec of listeners) rec.fn.call(this, ev);
             },
@@ -313,13 +318,35 @@ function headChildCount() { return _document.head.children.length; }
 
 function isInstalled() { return _installed; }
 
-// Fire a DPR change through every window.matchMedia() result (cold, test-only).
-function emitDpr(n) { for (const mql of _mediaQueries) mql._emit(n); }
+// Fire a DPR change through every resolution matchMedia() result (cold, test-only).
+function emitDpr(n) {
+    if (globalThis.window) globalThis.window.devicePixelRatio = n;
+    for (const mql of _mediaQueries) if (!mql._isRM) mql._fire();
+}
+
+// Drive prefers-reduced-motion (U5): set the state + fire change on every RM query
+// (cold, test-only). Also seeds NEW queries created after this call.
+function emitReducedMotion(on) {
+    _reducedMotion = !!on;
+    for (const mql of _mediaQueries) if (mql._isRM) { mql.matches = _reducedMotion; mql._fire(); }
+}
+
+// A caller-supplied ticker for the { ticker } host-clock tests (U5): duck-typed
+// like @zakkster/lite-ticker (.add(fn) -> removeFn, .destroy()), plus a hand
+// tick() and introspection. A component given this must never destroy it.
+class FakeTicker {
+    constructor() { this._fns = new Set(); this.destroyed = false; this.ticks = 0; }
+    add(fn) { this._fns.add(fn); return () => { this._fns.delete(fn); }; }
+    tick(dtMs) { this.ticks++; for (const fn of this._fns) fn(dtMs); }
+    destroy() { this.destroyed = true; this._fns.clear(); }
+    get size() { return this._fns.size; }
+}
 
 export {
     installDom,
     setDpr,
     emitDpr,
+    emitReducedMotion,
     makeContainer,
     headChildCount,
     isInstalled,
@@ -329,4 +356,5 @@ export {
     EventStub,
     PointerEventStub,
     FocusEventStub,
+    FakeTicker,
 };
