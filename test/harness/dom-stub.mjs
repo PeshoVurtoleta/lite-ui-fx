@@ -17,8 +17,8 @@
 const _CTX_METHODS = [
     'scale', 'save', 'restore', 'clearRect', 'setTransform', 'resetTransform',
     'transform', 'translate', 'rotate', 'fillRect', 'strokeRect', 'beginPath',
-    'arc', 'arcTo', 'ellipse', 'rect', 'fill', 'stroke', 'clip', 'fillText',
-    'strokeText', 'setLineDash', 'drawImage', 'roundRect', 'moveTo', 'lineTo',
+    'arc', 'arcTo', 'ellipse', 'rect', 'fill', 'stroke', 'clip',
+    'setLineDash', 'drawImage', 'roundRect', 'moveTo', 'lineTo',
     'bezierCurveTo', 'quadraticCurveTo', 'closePath',
 ];
 
@@ -55,6 +55,11 @@ class Ctx2DStub {
     measureText() { if (this._rec) this._log.push('measureText'); return _metricsStub; }
     record(on) { this._rec = on !== false; }
     clearLog() { this._log.length = 0; }
+    // fillText/strokeText log the TEXT argument (not just the call name) so the
+    // golden draw-signature and the t2 label-in-name assertion can see the
+    // visible string a recipe paints.
+    fillText(t) { if (this._rec) this._log.push('fillText=' + t); }
+    strokeText(t) { if (this._rec) this._log.push('strokeText=' + t); }
 }
 
 for (const m of _CTX_METHODS) {

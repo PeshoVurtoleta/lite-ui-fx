@@ -56,7 +56,12 @@ function runScan() {
 function judge(rows) {
     return rows.map((r) => ({
         ...r,
-        ok: r.major === 0 && r.grad === 0 && r.cdist <= COLOR_BUDGET,
+        // Real recipes must also pass the THEMED gate (tgrad/tcdist): palette
+        // resolution stayed in init, the hot tick allocates nothing under a
+        // non-default palette. The control row has no themed columns and is judged
+        // on its (deliberately blown) default cdist alone.
+        ok: r.major === 0 && r.grad === 0 && r.cdist <= COLOR_BUDGET &&
+            (r.id === '__alloc_control__' || (r.tgrad === 0 && r.tcdist <= COLOR_BUDGET)),
     }));
 }
 
@@ -68,9 +73,10 @@ export function reportT3() {
     for (const r of rows) {
         console.error(
             (r.ok ? 'PASS ' : 'FAIL ') + r.id.padEnd(20) +
-            ' major=' + r.major +
             ' cdist=' + String(r.cdist).padStart(4) +
-            ' grad=' + r.grad +
+            ' tcdist=' + String(r.tcdist === undefined ? '-' : r.tcdist).padStart(4) +
+            ' grad=' + r.grad + '/' + (r.tgrad === undefined ? '-' : r.tgrad) +
+            ' major=' + r.major +
             ' (minor=' + r.minor + ')',
         );
     }
@@ -93,7 +99,8 @@ export function runT3() {
     const fails = real.filter((r) => !r.ok);
     if (fails.length) {
         const detail = fails
-            .map((r) => r.id + '[major=' + r.major + ' cdist=' + r.cdist + ' grad=' + r.grad + ']')
+            .map((r) => r.id + '[major=' + r.major + ' cdist=' + r.cdist + ' grad=' + r.grad +
+                ' tcdist=' + r.tcdist + ' tgrad=' + r.tgrad + ']')
             .join('; ');
         assert.fail('t3 frame-alloc: ' + fails.length + '/' + real.length +
             ' recipes allocate on a hot frame -> ' + detail);

@@ -1,7 +1,7 @@
 # @zakkster/lite-ui-fx
 > Canvas-hijacked UI components with pluggable recipe system. 50 built-in recipes.
 
-VERSION 1.3.0
+VERSION 1.4.0
 
 ## Install
 npm i @zakkster/lite-ui-fx
@@ -33,6 +33,11 @@ width, height, padding=40, label   // geometry + accessible label
 value     // slider start, number 0..1 (default 0.5); out-of-range or non-number throws
 checked   // toggle start, boolean (default false)
 disabled  // native disabled attr + state.disabled for recipes to render
+seed      // recipe RNG seed (finite number)
+colors    // string[] palette override; wins over theme (array-palette recipes: IS the palette)
+theme     // { light, mid, dark } -> accent/dim/surface; partial or wrong-shape throws
+text      // visible canvas label; falls back to label, then the recipe default (label-in-name)
+font      // canvas font string; falls back to the recipe's historical font
 
 ## Element Types
 UIType.TOGGLE -> <input type="checkbox" role="switch"> -> state.toggled, onToggle(checked)
@@ -81,4 +86,9 @@ See UIFX-RECIPE-GUIDE.md (included in package).
 - Accessibility: role=switch, aria-label, keyboard focus tracking
 - Zero-GC in all built-in recipes: const colors + globalAlpha, precomputed
   color/label LUTs, fixed preallocated particle pools, gradients built in init.
-  Gated per recipe by the t3-frame-alloc torture tier.
+  Gated per recipe by the t3-frame-alloc torture tier (default AND themed mount).
+- Themeable: all 50 recipes honour { colors, theme:{light,mid,dark}, text, font },
+  resolved once in init (zero per-frame alloc). RECIPE_META.themeable is true for
+  all 50; motionSafe stays false (reduced motion is a later pass). A bare mount is
+  byte-identical to pre-theming. Shipped palettes + APCA contrast are authored with
+  @zakkster/lite-hueforge (a dev-only tool, never a runtime dependency).

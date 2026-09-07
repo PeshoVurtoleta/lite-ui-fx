@@ -181,8 +181,9 @@ if (state.focused) {
 
 ## Performance Rules
 
-1. **Never allocate in `tick()`** -- pre-allocate TypedArrays in the factory closure or `init()`
-2. **Use `splice()` sparingly** -- for small particle arrays (< 100) it's fine. For larger pools, use a dead-flag pattern
+1. **Never allocate in `tick()`** -- pre-allocate TypedArrays / fixed object pools in the factory closure or `init()`. This is not a guideline: the `t3-frame-alloc` torture tier FAILS any built-in recipe that assigns a fresh colour string, builds a gradient, or grows a pool on a hot frame (idle OR under interaction churn), and re-runs the same budget under a themed mount.
+2. **No `push`/`splice` on the hot path** -- a particle pool is a fixed-size array (or `Float64Array` lanes) with a `live`/`life` flag; spawn scans for a dead slot, death clears the flag. `splice()` allocates and shifts elements; it is a cold-path tool (mount/destroy) only, never per frame. (The pre-U3 "splice is fine for < 100 particles" advice is retired -- it contradicts the gate.)
 3. **Reset composite operation** -- if you set `ctx.globalCompositeOperation = 'screen'`, reset to `'source-over'` before returning
 4. **Reset shadow** -- `ctx.shadowBlur = 0` after drawing glowing elements
 5. **Use the `dt` parameter** -- all motion must be `value * dt`, not `value` per frame. This ensures consistent speed regardless of frame rate.
+6. **Resolve theming in the factory / `init()`, never in `tick()`** -- read `options.theme` / `colors` / `text` / `font` ONCE at construction (the built-ins use the shared `resolveTheme` / `pickText` / `pickFont` helpers), producing const colour strings and any value-LUT the hot body then reads. Alpha varies via `ctx.globalAlpha` over a const colour; a `rgba(...,${x})` or `` `${color}` `` built per frame trips t3. Defaults must reproduce the pre-theming output byte-for-byte.

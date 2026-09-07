@@ -1,92 +1,118 @@
 import type { UIFXRecipe, UIFXInstance, MountOptions } from './UIFXController';
 
 // ===========================================================
-//  RECIPE FACTORIES (all 50)
+//  RECIPE OPTIONS + FACTORIES (all 50)
 // ===========================================================
 
+/**
+ * The reserved theming options every recipe factory accepts (decisions/0002).
+ * All optional; omitting them reproduces the recipe's shipped look byte-for-byte.
+ */
+export interface RecipeOptions {
+    /** Seed for a recipe's deterministic RNG (particle bursts, jitter). */
+    seed?: number;
+    /**
+     * Positional palette override; wins over `theme`. For most recipes it maps
+     * over the role order (accent, dim, surface, ...); for an array-palette recipe
+     * (Confetti, Firework, Aurora, RadioOrbit, PasswordStrength, ReactionPicker)
+     * it IS the palette.
+     */
+    colors?: string[];
+    /** Named theme roles: `light` -> accent, `mid` -> dim/muted, `dark` -> surface. */
+    theme?: { light: string; mid: string; dark: string };
+    /**
+     * Visible canvas label. Falls back to the mount `label`, then the recipe's
+     * default string -- so setting only `label` keeps the visible text equal to the
+     * accessible name (WCAG 2.5.3 label-in-name). Ignored by recipes painting no text.
+     */
+    text?: string;
+    /** Canvas font string; falls back to the recipe's historical font literal. */
+    font?: string;
+}
+
 // -- Vol.1: Toggles --
-export declare function SwarmToggle(options?: { seed?: number; count?: number }): UIFXRecipe;
-export declare function LiquidToggle(): UIFXRecipe;
-export declare function NeonPulseToggle(): UIFXRecipe;
+export declare function SwarmToggle(options?: RecipeOptions & { count?: number }): UIFXRecipe;
+export declare function LiquidToggle(options?: RecipeOptions): UIFXRecipe;
+export declare function NeonPulseToggle(options?: RecipeOptions): UIFXRecipe;
 
 // -- Vol.1: Buttons --
-export declare function MagneticButton(options?: { maxPull?: number }): UIFXRecipe;
-export declare function ShatterButton(options?: { seed?: number }): UIFXRecipe;
-export declare function ConfettiButton(options?: { seed?: number; colors?: string[] }): UIFXRecipe;
-export declare function GlitchButton(options?: { seed?: number }): UIFXRecipe;
+export declare function MagneticButton(options?: RecipeOptions & { maxPull?: number }): UIFXRecipe;
+export declare function ShatterButton(options?: RecipeOptions): UIFXRecipe;
+export declare function ConfettiButton(options?: RecipeOptions): UIFXRecipe;
+export declare function GlitchButton(options?: RecipeOptions): UIFXRecipe;
 
 // -- Vol.1: Sliders --
-export declare function SparkSlider(options?: { seed?: number; color?: string }): UIFXRecipe;
-export declare function CosmicSlider(options?: { seed?: number; dustCount?: number }): UIFXRecipe;
-export declare function LaserSlider(): UIFXRecipe;
+export declare function SparkSlider(options?: RecipeOptions & { color?: string }): UIFXRecipe;
+export declare function CosmicSlider(options?: RecipeOptions & { dustCount?: number }): UIFXRecipe;
+export declare function LaserSlider(options?: RecipeOptions): UIFXRecipe;
 
 // -- Vol.2: Toggles --
-export declare function PendulumToggle(): UIFXRecipe;
-export declare function CircuitToggle(options?: { seed?: number }): UIFXRecipe;
-export declare function LightningToggle(options?: { seed?: number }): UIFXRecipe;
-export declare function DNAToggle(): UIFXRecipe;
+export declare function PendulumToggle(options?: RecipeOptions): UIFXRecipe;
+export declare function CircuitToggle(options?: RecipeOptions): UIFXRecipe;
+export declare function LightningToggle(options?: RecipeOptions): UIFXRecipe;
+export declare function DNAToggle(options?: RecipeOptions): UIFXRecipe;
 
 // -- Vol.2: Buttons --
-export declare function HeartbeatButton(options?: { seed?: number }): UIFXRecipe;
-export declare function BreathingButton(): UIFXRecipe;
-export declare function InkSplashButton(options?: { seed?: number }): UIFXRecipe;
-export declare function PixelDissolveButton(options?: { seed?: number; cols?: number; rows?: number }): UIFXRecipe;
-export declare function FireworkButton(options?: { seed?: number }): UIFXRecipe;
+export declare function HeartbeatButton(options?: RecipeOptions): UIFXRecipe;
+export declare function BreathingButton(options?: RecipeOptions): UIFXRecipe;
+export declare function InkSplashButton(options?: RecipeOptions): UIFXRecipe;
+export declare function PixelDissolveButton(options?: RecipeOptions & { cols?: number; rows?: number }): UIFXRecipe;
+export declare function FireworkButton(options?: RecipeOptions): UIFXRecipe;
 
 // -- Vol.2: Sliders --
-export declare function AuroraSlider(): UIFXRecipe;
-export declare function WaveSlider(options?: { seed?: number }): UIFXRecipe;
-export declare function ElasticBandSlider(): UIFXRecipe;
-export declare function GravitySlider(): UIFXRecipe;
+export declare function AuroraSlider(options?: RecipeOptions): UIFXRecipe;
+export declare function WaveSlider(options?: RecipeOptions): UIFXRecipe;
+export declare function ElasticBandSlider(options?: RecipeOptions): UIFXRecipe;
+export declare function GravitySlider(options?: RecipeOptions): UIFXRecipe;
 
 // -- Vol.2: Loaders --
-export declare function OrbitLoader(): UIFXRecipe;
-export declare function HelixLoader(): UIFXRecipe;
+export declare function OrbitLoader(options?: RecipeOptions): UIFXRecipe;
+export declare function HelixLoader(options?: RecipeOptions): UIFXRecipe;
 
 // -- Vol.2: Checkboxes --
-export declare function RippleCheck(): UIFXRecipe;
-export declare function MorphCheck(): UIFXRecipe;
+export declare function RippleCheck(options?: RecipeOptions): UIFXRecipe;
+export declare function MorphCheck(options?: RecipeOptions): UIFXRecipe;
 
 // -- Vol.2: Counters --
-export declare function FlameCounter(options?: { seed?: number }): UIFXRecipe;
-export declare function GlitchCounter(options?: { seed?: number }): UIFXRecipe;
+export declare function FlameCounter(options?: RecipeOptions): UIFXRecipe;
+export declare function GlitchCounter(options?: RecipeOptions): UIFXRecipe;
 
 // -- Vol.2: Rating --
-export declare function BubbleRating(options?: { seed?: number }): UIFXRecipe;
+export declare function BubbleRating(options?: RecipeOptions): UIFXRecipe;
 
 // -- Vol.3: Knobs --
-export declare function VolumeKnob(): UIFXRecipe;
-export declare function CompassKnob(): UIFXRecipe;
+export declare function VolumeKnob(options?: RecipeOptions): UIFXRecipe;
+export declare function CompassKnob(options?: RecipeOptions): UIFXRecipe;
 
 // -- Vol.3: Progress --
-export declare function RingProgress(options?: { seed?: number }): UIFXRecipe;
-export declare function BatteryGauge(): UIFXRecipe;
-export declare function SignalMeter(): UIFXRecipe;
+export declare function RingProgress(options?: RecipeOptions): UIFXRecipe;
+export declare function BatteryGauge(options?: RecipeOptions): UIFXRecipe;
+export declare function SignalMeter(options?: RecipeOptions): UIFXRecipe;
 
 // -- Vol.3: Controls --
-export declare function PillTabs(): UIFXRecipe;
-export declare function Stepper(): UIFXRecipe;
-export declare function RadioOrbit(): UIFXRecipe;
+export declare function PillTabs(options?: RecipeOptions): UIFXRecipe;
+export declare function Stepper(options?: RecipeOptions): UIFXRecipe;
+export declare function RadioOrbit(options?: RecipeOptions): UIFXRecipe;
 
 // -- Vol.3: Indicators --
-export declare function PasswordStrength(): UIFXRecipe;
-export declare function WaterLevel(): UIFXRecipe;
-export declare function HeatMap(options?: { seed?: number }): UIFXRecipe;
+export declare function PasswordStrength(options?: RecipeOptions): UIFXRecipe;
+export declare function WaterLevel(options?: RecipeOptions): UIFXRecipe;
+export declare function HeatMap(options?: RecipeOptions): UIFXRecipe;
 
 // -- Vol.3: Mood --
-export declare function DayNightToggle(options?: { seed?: number }): UIFXRecipe;
-export declare function ReactionPicker(): UIFXRecipe;
-export declare function NotificationBell(): UIFXRecipe;
+export declare function DayNightToggle(options?: RecipeOptions): UIFXRecipe;
+export declare function ReactionPicker(options?: RecipeOptions): UIFXRecipe;
+export declare function NotificationBell(options?: RecipeOptions): UIFXRecipe;
 
 // -- Vol.3: Feedback --
-export declare function TypewriterField(): UIFXRecipe;
-export declare function SoundWaveBtn(): UIFXRecipe;
-export declare function UploadProgress(): UIFXRecipe;
+export declare function TypewriterField(options?: RecipeOptions): UIFXRecipe;
+export declare function SoundWaveBtn(options?: RecipeOptions): UIFXRecipe;
+export declare function UploadProgress(options?: RecipeOptions): UIFXRecipe;
 
 // -- Vol.3: Fun --
-export declare function ScratchReveal(options?: { seed?: number }): UIFXRecipe;
-export declare function TimerCountdown(): UIFXRecipe;
-export declare function PullRefresh(): UIFXRecipe;
+export declare function ScratchReveal(options?: RecipeOptions): UIFXRecipe;
+export declare function TimerCountdown(options?: RecipeOptions): UIFXRecipe;
+export declare function PullRefresh(options?: RecipeOptions): UIFXRecipe;
 
 // ===========================================================
 //  BARREL OBJECTS (back-compat)

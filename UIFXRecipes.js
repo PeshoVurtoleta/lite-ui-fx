@@ -100,6 +100,81 @@ function fr(c,w,h,r){c.strokeStyle='rgba(110,231,182,.5)';c.lineWidth=2;c.setLin
 const PI2=Math.PI*2;
 
 
+// ---------------------------------------------------------
+//  THEME RESOLUTION (U3b, decisions/0002) -- COLD, once per instance in the
+//  factory / init. The hot tick() reads only the const strings resolved here.
+// ---------------------------------------------------------
+
+/**
+ * Resolve a recipe palette. DEFAULT is a role map of the recipe's historical
+ * literals ({ accent, dim, surface, ...extras }), so a bare mount is
+ * byte-identical to 1.3.0. options overlay it: theme { light, mid, dark } maps to
+ * { accent, dim, surface }; colors[] overrides positionally over
+ * Object.keys(DEFAULT) (accent, dim, surface, extras...), applied AFTER theme so
+ * colors win. Returns a fresh per-instance object -- DEFAULT is never mutated.
+ */
+function resolveTheme(o, DEFAULT) {
+    const p = Object.assign({}, DEFAULT);
+    if (o) {
+        const t = o.theme;
+        if (t) {
+            // Prefix roles so a recipe with two muted variants (dim, dim2) or two
+            // accents (accent, accent2) maps them all from one theme anchor while
+            // its DEFAULT keeps the distinct literals for byte-parity.
+            for (const k in p) {
+                if (k.indexOf('accent') === 0) p[k] = t.light;
+                else if (k.indexOf('dim') === 0) p[k] = t.mid;
+                else if (k.indexOf('surface') === 0) p[k] = t.dark;
+            }
+        }
+        const c = o.colors;
+        if (c) {
+            const ks = Object.keys(DEFAULT);
+            for (let i = 0; i < c.length && i < ks.length; i++) {
+                if (c[i] != null) p[ks[i]] = c[i];
+            }
+        }
+    }
+    return p;
+}
+
+/** Hex (#rgb / #rrggbb) -> "r,g,b" for building rgba() ramps. Returns `def` for a
+ *  non-hex color (e.g. 'oklch(...)'), so a caller degrades gracefully rather than
+ *  emitting NaN channels. COLD. */
+function rgbTriplet(hex, def) {
+    if (typeof hex !== 'string' || hex[0] !== '#') return def;
+    let h = hex.slice(1);
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    if (h.length !== 6) return def;
+    const n = parseInt(h, 16);
+    if (!Number.isFinite(n)) return def;
+    return ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255);
+}
+
+/** Hex -> "rgba(r,g,b,a)". COLD and only ever called on the themed path -- a bare
+ *  mount keeps its historical rgba() literal, so this string's exact formatting is
+ *  never compared for byte-parity. Falls back to the input untouched for a non-hex
+ *  theme color, degrading a derived tint to the solid rather than emitting NaN. */
+function rgbaOf(hex, a) {
+    const t = rgbTriplet(hex, null);
+    return t === null ? hex : 'rgba(' + t + ',' + a + ')';
+}
+
+/** Resolve a recipe's visible canvas label: options.text, else the accessible
+ *  options.label, else the recipe default -- so a mount that sets only `label`
+ *  still drives the visible text (WCAG 2.5.3 label-in-name by construction). */
+function pickText(o, def) {
+    if (o) {
+        if (o.text != null) return o.text;
+        if (o.label != null && o.label !== '') return o.label;
+    }
+    return def;
+}
+
+/** Resolve a font string: options.font, else the recipe's historical literal. */
+function pickFont(o, def) { return (o && o.font) || def; }
+
+
 
 // ===========================================================
 //  TOGGLE RECIPES
@@ -110,7 +185,10 @@ const PI2=Math.PI*2;
  * On toggle, they explode outward then regroup at the new position.
  * Uses sunflower phyllotaxis for the packed formation.
  */
-export function SwarmToggle({ seed = 42, count = 150 } = {}) {
+export function SwarmToggle(o = {}) {
+    const { seed = 42, count = 150 } = o;
+    const P = resolveTheme(o, { accent: '#6ee7b6', dim: '#9999b8', dim2: '#8888aa' });
+    const onTint = (o.theme || o.colors) ? rgbaOf(P.accent, .2) : 'rgba(110,231,182,.2)';
     const rng = new Random(seed);
     const N = count;
     const px = new Float32Array(N), py = new Float32Array(N);
@@ -142,19 +220,19 @@ export function SwarmToggle({ seed = 42, count = 150 } = {}) {
 
         tick(ctx, dt, now, st) {
             // Track
-            ctx.fillStyle = st.toggled ? 'rgba(110,231,182,.2)' : 'rgba(255,255,255,.06)';
+            ctx.fillStyle = st.toggled ? onTint : 'rgba(255,255,255,.06)';
             roundRect(ctx, 0, 0, st.w, st.h, st.h / 2);
             ctx.fill();
 
             // State label
             drawStateLabel(ctx, st.toggled ? 'ON' : 'OFF', st.w / 2, st.h + 14,
-                st.toggled ? '#6ee7b6' : '#8888aa');
+                st.toggled ? P.accent : P.dim2);
 
             // Knob target position
             const tx = st.toggled ? st.w - 18 : 18;
 
             // Render particles (spring toward formation)
-            ctx.fillStyle = st.toggled ? '#6ee7b6' : '#9999b8';
+            ctx.fillStyle = st.toggled ? P.accent : P.dim;
             for (let i = 0; i < N; i++) {
                 vx[i] += ((tx + ox[i]) - px[i]) * 15 * dt;
                 vy[i] += ((st.h / 2 + oy[i]) - py[i]) * 15 * dt;
@@ -179,7 +257,9 @@ export function SwarmToggle({ seed = 42, count = 150 } = {}) {
  * Liquid Toggle -- Metaball-style stretching knob.
  * The knob elongates in the direction of motion, squashes perpendicular.
  */
-export function LiquidToggle() {
+export function LiquidToggle(o = {}) {
+    const P = resolveTheme(o, { accent: '#6ee7b6', dim: '#9999b8', dim2: '#8888aa' });
+    const onTint = (o.theme || o.colors) ? rgbaOf(P.accent, .2) : 'rgba(110,231,182,.2)';
     let knobX = 18;
 
     return {
@@ -189,19 +269,19 @@ export function LiquidToggle() {
             const stretch = Math.abs(knobX - tx) * 0.5;
 
             // Track
-            ctx.fillStyle = st.toggled ? 'rgba(110,231,182,.2)' : 'rgba(255,255,255,.06)';
+            ctx.fillStyle = st.toggled ? onTint : 'rgba(255,255,255,.06)';
             roundRect(ctx, 0, 0, st.w, st.h, st.h / 2);
             ctx.fill();
 
             // Knob (stretched ellipse)
-            ctx.fillStyle = st.toggled ? '#6ee7b6' : '#9999b8';
+            ctx.fillStyle = st.toggled ? P.accent : P.dim;
             ctx.beginPath();
             ctx.ellipse(knobX, st.h / 2, 14 + stretch, 14 - stretch * 0.2, 0, 0, Math.PI * 2);
             ctx.fill();
 
             // State label
             drawStateLabel(ctx, st.toggled ? 'ON' : 'OFF', st.w / 2, st.h + 14,
-                st.toggled ? '#6ee7b6' : '#8888aa');
+                st.toggled ? P.accent : P.dim2);
 
             if (st.focused) drawFocusRing(ctx, st.w, st.h, st.h / 2);
         },
@@ -212,7 +292,9 @@ export function LiquidToggle() {
 /**
  * Neon Pulse Toggle -- Expanding shockwave rings on toggle.
  */
-export function NeonPulseToggle() {
+export function NeonPulseToggle(o = {}) {
+    const P = resolveTheme(o, { accent: '#38bdf8', dim: '#9999b8', dim2: '#8888aa' });
+    const onTint = (o.theme || o.colors) ? rgbaOf(P.accent, .2) : 'rgba(56,189,248,.2)';
     // Fixed ring pool (dead when life <= 0) -- no push/splice on the hot path.
     const RINGS = 8;
     const ringR = new Float64Array(RINGS);
@@ -238,13 +320,13 @@ export function NeonPulseToggle() {
             knobX = lerp(knobX, st.toggled ? st.w - 18 : 18, dt * 15);
 
             // Track
-            ctx.fillStyle = st.toggled ? 'rgba(56,189,248,.2)' : 'rgba(255,255,255,.06)';
+            ctx.fillStyle = st.toggled ? onTint : 'rgba(255,255,255,.06)';
             roundRect(ctx, 0, 0, st.w, st.h, st.h / 2);
             ctx.fill();
 
             // Shockwave rings -- const stroke color, per-ring alpha via globalAlpha
             // (was `rgba(56,189,248,${life})` built per ring per frame).
-            ctx.strokeStyle = '#38bdf8';
+            ctx.strokeStyle = P.accent;
             ctx.lineWidth = 2;
             for (let i = 0; i < RINGS; i++) {
                 if (ringLife[i] <= 0) continue;
@@ -259,13 +341,13 @@ export function NeonPulseToggle() {
             ctx.globalAlpha = 1;
 
             // Knob
-            ctx.fillStyle = st.toggled ? '#38bdf8' : '#9999b8';
+            ctx.fillStyle = st.toggled ? P.accent : P.dim;
             ctx.beginPath();
             ctx.arc(knobX, st.h / 2, 14, 0, Math.PI * 2);
             ctx.fill();
 
             drawStateLabel(ctx, st.toggled ? 'ON' : 'OFF', st.w / 2, st.h + 14,
-                st.toggled ? '#38bdf8' : '#8888aa');
+                st.toggled ? P.accent : P.dim2);
 
             if (st.focused) drawFocusRing(ctx, st.w, st.h, st.h / 2);
         },
@@ -281,7 +363,11 @@ export function NeonPulseToggle() {
  * Magnetic Button -- The entire button follows the cursor with spring physics.
  * Squashes on click, springs back.
  */
-export function MagneticButton({ maxPull = 15 } = {}) {
+export function MagneticButton(o = {}) {
+    const { maxPull = 15 } = o;
+    const P = resolveTheme(o, { accent: '#a78bfa', surface: '#1e1e2f', dim: '#e2e2f0' });
+    const FONT = pickFont(o, "600 13px 'Space Grotesk',sans-serif");
+    const TXT = pickText(o, 'MAGNETIC');
     let bx = 0, by = 0, textScale = 1;
 
     return {
@@ -297,19 +383,19 @@ export function MagneticButton({ maxPull = 15 } = {}) {
             ctx.translate(bx, by);
 
             // Button body
-            ctx.fillStyle = st.hover ? '#1e1e2f' : 'rgba(255,255,255,.05)';
-            ctx.strokeStyle = st.hover ? '#a78bfa' : 'rgba(255,255,255,.1)';
+            ctx.fillStyle = st.hover ? P.surface : 'rgba(255,255,255,.05)';
+            ctx.strokeStyle = st.hover ? P.accent : 'rgba(255,255,255,.1)';
             ctx.lineWidth = 1;
             roundRect(ctx, 0, 0, st.w, st.h, 10);
             ctx.fill(); ctx.stroke();
 
             // Label
-            ctx.fillStyle = st.hover ? '#a78bfa' : '#e2e2f0';
-            ctx.font = "600 13px 'Space Grotesk',sans-serif";
+            ctx.fillStyle = st.hover ? P.accent : P.dim;
+            ctx.font = FONT;
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             ctx.translate(st.w / 2, st.h / 2);
             ctx.scale(textScale, textScale);
-            ctx.fillText('MAGNETIC', 0, 0);
+            ctx.fillText(TXT, 0, 0);
 
             if (st.focused) {
                 ctx.setTransform(st.dpr, 0, 0, st.dpr, 0, 0);
@@ -324,7 +410,12 @@ export function MagneticButton({ maxPull = 15 } = {}) {
 /**
  * Shatter Button -- Click explodes into falling shards, reforms after 1.5s.
  */
-export function ShatterButton({ seed = 42 } = {}) {
+export function ShatterButton(o = {}) {
+    const { seed = 42 } = o;
+    const P = resolveTheme(o, { accent: '#ffffff', dim: '#e2e2f0' });
+    const shardColor = (o.theme || o.colors) ? rgbaOf(P.accent, .5) : 'rgba(255,255,255,.5)';
+    const FONT = pickFont(o, "600 13px 'Space Grotesk',sans-serif");
+    const TXT = pickText(o, 'SHATTER');
     const rng = new Random(seed);
     // Fixed shard pool (live flag) -- no push/splice on the hot path.
     const SHARDS = 32;
@@ -360,16 +451,16 @@ export function ShatterButton({ seed = 42 } = {}) {
                 ctx.fillStyle = st.active ? 'rgba(255,255,255,.15)' : 'rgba(255,255,255,.08)';
                 roundRect(ctx, 0, 0, st.w, st.h, 10);
                 ctx.fill();
-                ctx.fillStyle = '#e2e2f0';
-                ctx.font = "600 13px 'Space Grotesk',sans-serif";
+                ctx.fillStyle = P.dim;
+                ctx.font = FONT;
                 ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                ctx.fillText('SHATTER', st.w / 2, st.h / 2);
+                ctx.fillText(TXT, st.w / 2, st.h / 2);
 
                 if (st.focused) drawFocusRing(ctx, st.w, st.h, 10);
             }
 
             // Falling shards -- fixed pool
-            ctx.fillStyle = 'rgba(255,255,255,.5)';
+            ctx.fillStyle = shardColor;
             for (let i = 0; i < SHARDS; i++) {
                 const s = shard[i];
                 if (!s.live) continue;
@@ -390,7 +481,15 @@ export function ShatterButton({ seed = 42 } = {}) {
 /**
  * Confetti Button -- 3D tumbling confetti burst from click point.
  */
-export function ConfettiButton({ seed = 42, colors = ['#6ee7b6', '#38bdf8', '#a78bfa', '#fbbf24', '#f43f5e'] } = {}) {
+export function ConfettiButton(o = {}) {
+    const { seed = 42 } = o;
+    // `colors` is the confetti palette (legacy option, still honored); `theme`
+    // drives the crimson body and, absent colors, seeds the palette too.
+    const colors = o.colors ? o.colors
+        : (o.theme ? [o.theme.light, o.theme.mid, o.theme.dark] : ['#6ee7b6', '#38bdf8', '#a78bfa', '#fbbf24', '#f43f5e']);
+    const bodyColor = (o.theme && o.theme.light) || '#DC143C';
+    const FONT = pickFont(o, "600 13px 'Space Grotesk',sans-serif");
+    const TXT = pickText(o, 'CONFETTI');
     const rng = new Random(seed);
     // Fixed confetti pool (live flag) -- no push/splice on the hot path.
     const CONF = 80;
@@ -425,13 +524,13 @@ export function ConfettiButton({ seed = 42, colors = ['#6ee7b6', '#38bdf8', '#a7
             ctx.translate(-st.w / 2, -st.h / 2);
 
             // Button body
-            ctx.fillStyle = '#DC143C';
+            ctx.fillStyle = bodyColor;
             roundRect(ctx, 0, 0, st.w, st.h, 10);
             ctx.fill();
             ctx.fillStyle = '#fff';
-            ctx.font = "600 13px 'Space Grotesk',sans-serif";
+            ctx.font = FONT;
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText('CONFETTI', st.w / 2, st.h / 2);
+            ctx.fillText(TXT, st.w / 2, st.h / 2);
 
             // Tumbling confetti -- fixed pool
             for (let i = 0; i < CONF; i++) {
@@ -462,7 +561,11 @@ export function ConfettiButton({ seed = 42, colors = ['#6ee7b6', '#38bdf8', '#a7
 /**
  * Glitch Button -- RGB channel split on hover. Random slice displacement.
  */
-export function GlitchButton({ seed = 42 } = {}) {
+export function GlitchButton(o = {}) {
+    const { seed = 42 } = o;
+    const P = resolveTheme(o, { accent: '#ff0055', accent2: '#00ffcc' });
+    const FONT = pickFont(o, "600 13px 'Space Grotesk',sans-serif");
+    const TXT = pickText(o, 'GLITCH');
     const rng = new Random(seed);
     let glitchIntensity = 0;
 
@@ -475,9 +578,9 @@ export function GlitchButton({ seed = 42 } = {}) {
         ctx.fill();
         ctx.globalAlpha = 1;
         ctx.fillStyle = '#fff';
-        ctx.font = "600 13px 'Space Grotesk',sans-serif";
+        ctx.font = FONT;
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText('GLITCH', st.w / 2 + ox, st.h / 2 + oy);
+        ctx.fillText(TXT, st.w / 2 + ox, st.h / 2 + oy);
     }
 
     return {
@@ -489,8 +592,8 @@ export function GlitchButton({ seed = 42 } = {}) {
                 const off = rng.range(2, 6) * glitchIntensity;
                 // Alternate between split and normal for flicker
                 if (rng.next() > 0.4) {
-                    drawBase(ctx, st, -off, 0, '#ff0055', 0.6 * glitchIntensity);
-                    drawBase(ctx, st, off, 0, '#00ffcc', 0.6 * glitchIntensity);
+                    drawBase(ctx, st, -off, 0, P.accent, 0.6 * glitchIntensity);
+                    drawBase(ctx, st, off, 0, P.accent2, 0.6 * glitchIntensity);
                 } else {
                     drawBase(ctx, st, 0, 0, 'rgba(255,255,255,.1)', 1);
                 }
@@ -513,7 +616,10 @@ export function GlitchButton({ seed = 42 } = {}) {
  * Spark Slider -- Emits directional sparks based on drag velocity.
  * Sparks fly opposite to drag direction with motion-blur stretch.
  */
-export function SparkSlider({ seed = 42, color = '#fbbf24' } = {}) {
+export function SparkSlider(o = {}) {
+    const { seed = 42 } = o;
+    // `color` (legacy singular) seeds the default accent; theme/colors override it.
+    const P = resolveTheme(o, { accent: o.color || '#fbbf24', dim: '#9999b8' });
     const rng = new Random(seed);
     // Fixed spark pool (life <= 0 == dead) -- no push/splice on the hot path.
     const SPARKS = 64;
@@ -552,7 +658,7 @@ export function SparkSlider({ seed = 42, color = '#fbbf24' } = {}) {
 
             // Filled track
             const tx = st.val * st.w;
-            ctx.fillStyle = color;
+            ctx.fillStyle = P.accent;
             roundRect(ctx, 0, 12, tx, 4, 2);
             ctx.fill();
 
@@ -562,12 +668,12 @@ export function SparkSlider({ seed = 42, color = '#fbbf24' } = {}) {
             ctx.fill();
 
             // Value label
-            drawStateLabel(ctx, PCT[Math.round(st.val * 100)], st.w / 2, st.h + 10, '#9999b8');
+            drawStateLabel(ctx, PCT[Math.round(st.val * 100)], st.w / 2, st.h + 10, P.dim);
 
             // Sparks -- fixed pool, themed color, alpha via globalAlpha
             // (was `rgba(251,191,36,${life})` built per spark per frame).
             ctx.globalCompositeOperation = 'screen';
-            ctx.fillStyle = color;
+            ctx.fillStyle = P.accent;
             for (let i = 0; i < SPARKS; i++) {
                 const s = spark[i];
                 if (s.life <= 0) continue;
@@ -596,7 +702,9 @@ export function SparkSlider({ seed = 42, color = '#fbbf24' } = {}) {
  * Cosmic Slider -- Thumb is a black hole that sucks in background dust.
  * Particles respawn when consumed.
  */
-export function CosmicSlider({ seed = 42, dustCount = 80 } = {}) {
+export function CosmicSlider(o = {}) {
+    const { seed = 42, dustCount = 80 } = o;
+    const P = resolveTheme(o, { accent: '#a78bfa', surface: '#000', dim: '#9999b8' });
     const rng = new Random(seed);
     const dust = [];
 
@@ -637,13 +745,13 @@ export function CosmicSlider({ seed = 42, dustCount = 80 } = {}) {
             }
 
             // Black hole thumb with glow
-            ctx.shadowBlur = 10; ctx.shadowColor = '#a78bfa';
-            ctx.fillStyle = '#000'; ctx.strokeStyle = '#a78bfa'; ctx.lineWidth = 2;
+            ctx.shadowBlur = 10; ctx.shadowColor = P.accent;
+            ctx.fillStyle = P.surface; ctx.strokeStyle = P.accent; ctx.lineWidth = 2;
             ctx.beginPath(); ctx.arc(tx, 14, 12, 0, Math.PI * 2);
             ctx.fill(); ctx.stroke();
             ctx.shadowBlur = 0;
 
-            drawStateLabel(ctx, PCT[Math.round(st.val * 100)], st.w / 2, st.h + 10, '#9999b8');
+            drawStateLabel(ctx, PCT[Math.round(st.val * 100)], st.w / 2, st.h + 10, P.dim);
 
             if (st.focused) drawFocusRing(ctx, st.w, st.h, 4);
         },
@@ -654,7 +762,8 @@ export function CosmicSlider({ seed = 42, dustCount = 80 } = {}) {
 /**
  * Laser Slider -- Energy beam traces the filled track. Pulsing plasma thumb.
  */
-export function LaserSlider() {
+export function LaserSlider(o = {}) {
+    const P = resolveTheme(o, { accent: '#38bdf8', dim: '#9999b8' });
     const REF = 100;          // gradient reference width; scaled to tx at paint
     let pulseTime = 0, beam = null;
 
@@ -665,7 +774,7 @@ export function LaserSlider() {
             // no per-frame createLinearGradient.
             beam = ctx.createLinearGradient(0, 0, REF, 0);
             beam.addColorStop(0, 'transparent');
-            beam.addColorStop(0.8, '#38bdf8');
+            beam.addColorStop(0.8, P.accent);
             beam.addColorStop(1, '#fff');
         },
         tick(ctx, dt, now, st) {
@@ -682,22 +791,22 @@ export function LaserSlider() {
             if (tx > 2) {
                 ctx.save();
                 ctx.scale(tx / REF, 1);
-                ctx.fillStyle = beam || '#38bdf8';
-                ctx.shadowBlur = 10; ctx.shadowColor = '#38bdf8';
+                ctx.fillStyle = beam || P.accent;
+                ctx.shadowBlur = 10; ctx.shadowColor = P.accent;
                 roundRect(ctx, 0, 12, REF, 4, 2);
                 ctx.fill();
                 ctx.restore();
             }
 
             // Plasma thumb (pulsing) -- keep the glow the beam left on
-            ctx.shadowBlur = 10; ctx.shadowColor = '#38bdf8';
+            ctx.shadowBlur = 10; ctx.shadowColor = P.accent;
             ctx.fillStyle = '#fff';
             ctx.beginPath();
             ctx.arc(tx, 14, 8 + Math.sin(pulseTime) * 2, 0, Math.PI * 2);
             ctx.fill();
             ctx.shadowBlur = 0;
 
-            drawStateLabel(ctx, PCT[Math.round(st.val * 100)], st.w / 2, st.h + 10, '#9999b8');
+            drawStateLabel(ctx, PCT[Math.round(st.val * 100)], st.w / 2, st.h + 10, P.dim);
 
             if (st.focused) drawFocusRing(ctx, st.w, st.h, 4);
         },
@@ -710,7 +819,11 @@ export function LaserSlider() {
 // ===========================================================
 
 /** 1. Pendulum Toggle -- The knob swings like a pendulum with overshoot. */
-export function PendulumToggle() {
+export function PendulumToggle(o = {}) {
+    const P = resolveTheme(o, { accent: '#6ee7b6', dim: '#9999b8', dim2: '#8888aa' });
+    const themed = !!(o.theme || o.colors);
+    const onTint = themed ? rgbaOf(P.accent, .2) : 'rgba(110,231,182,.2)';
+    const strokeOn = themed ? rgbaOf(P.accent, .3) : 'rgba(110,231,182,.3)';
     let angle = -0.4, velocity = 0;
     const STIFFNESS = 12, DAMPING = 3.5;
     return {
@@ -721,24 +834,26 @@ export function PendulumToggle() {
             velocity *= (1 - DAMPING * dt);
             angle += velocity * dt;
 
-            ctx.fillStyle = st.toggled ? 'rgba(110,231,182,.2)' : 'rgba(255,255,255,.06)';
+            ctx.fillStyle = st.toggled ? onTint : 'rgba(255,255,255,.06)';
             roundRect(ctx, 0, 0, st.w, st.h, st.h / 2); ctx.fill();
 
             const cx = st.w / 2, cy = -10, len = st.h / 2 + 14;
             const bx = cx + Math.sin(angle) * len, by = cy + Math.cos(angle) * len;
 
-            ctx.strokeStyle = st.toggled ? 'rgba(110,231,182,.3)' : 'rgba(255,255,255,.08)';
+            ctx.strokeStyle = st.toggled ? strokeOn : 'rgba(255,255,255,.08)';
             ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(bx, by); ctx.stroke();
-            ctx.fillStyle = st.toggled ? '#6ee7b6' : '#9999b8';
+            ctx.fillStyle = st.toggled ? P.accent : P.dim;
             ctx.beginPath(); ctx.arc(bx, by, 12, 0, Math.PI * 2); ctx.fill();
-            label(ctx, st.toggled ? 'ON' : 'OFF', st.w / 2, st.h + 14, st.toggled ? '#6ee7b6' : '#8888aa');
+            label(ctx, st.toggled ? 'ON' : 'OFF', st.w / 2, st.h + 14, st.toggled ? P.accent : P.dim2);
             if (st.focused) focusRing(ctx, st.w, st.h, st.h / 2);
         },
     };
 }
 
 /** 2. Circuit Toggle -- Electricity flows through a circuit path when ON. */
-export function CircuitToggle({ seed = 42 } = {}) {
+export function CircuitToggle(o = {}) {
+    const { seed = 42 } = o;
+    const P = resolveTheme(o, { accent: '#22d3ee', dim: '#9999b8', dim2: '#8888aa' });
     const rng = new Random(seed);
     // Fixed spark pool (life <= 0 == dead) -- no push/splice on the hot path.
     const SPARKS = 16;
@@ -766,14 +881,14 @@ export function CircuitToggle({ seed = 42 } = {}) {
             roundRect(ctx, 0, 0, st.w, st.h, st.h / 2); ctx.fill();
 
             // Circuit path
-            ctx.strokeStyle = st.toggled ? '#22d3ee' : 'rgba(255,255,255,.06)';
+            ctx.strokeStyle = st.toggled ? P.accent : 'rgba(255,255,255,.06)';
             ctx.lineWidth = 2; ctx.setLineDash(DASH_FLOW); ctx.lineDashOffset = -flowT * 16;
             ctx.beginPath(); ctx.moveTo(8, st.h / 2); ctx.lineTo(st.w - 8, st.h / 2); ctx.stroke();
             ctx.setLineDash(DASH_NONE); ctx.lineDashOffset = 0;
 
             // Flowing sparks -- fixed pool, per-spark alpha via globalAlpha
             if (st.toggled) {
-                ctx.fillStyle = '#22d3ee';
+                ctx.fillStyle = P.accent;
                 let alive = 0;
                 for (let i = 0; i < SPARKS; i++) {
                     const s = spark[i];
@@ -790,16 +905,21 @@ export function CircuitToggle({ seed = 42 } = {}) {
                 if (alive < 12) spawn(0);
             }
 
-            ctx.fillStyle = st.toggled ? '#22d3ee' : '#9999b8';
+            ctx.fillStyle = st.toggled ? P.accent : P.dim;
             ctx.beginPath(); ctx.arc(knobX, st.h / 2, 12, 0, Math.PI * 2); ctx.fill();
-            label(ctx, st.toggled ? 'ON' : 'OFF', st.w / 2, st.h + 14, st.toggled ? '#22d3ee' : '#8888aa');
+            label(ctx, st.toggled ? 'ON' : 'OFF', st.w / 2, st.h + 14, st.toggled ? P.accent : P.dim2);
             if (st.focused) focusRing(ctx, st.w, st.h, st.h / 2);
         },
     };
 }
 
 /** 3. Lightning Toggle -- Electric arc between endpoints. */
-export function LightningToggle({ seed = 42 } = {}) {
+export function LightningToggle(o = {}) {
+    const { seed = 42 } = o;
+    const P = resolveTheme(o, { accent: '#fbbf24', dim: '#9999b8', dim2: '#8888aa' });
+    const themed = !!(o.theme || o.colors);
+    const onTint = themed ? rgbaOf(P.accent, .15) : 'rgba(251,191,36,.15)';
+    const arcColor = themed ? rgbaOf(P.accent, .7) : 'rgba(251,191,36,.7)';
     const rng = new Random(seed);
     let knobX = 18, arcTime = 0;
     function bolt(ctx, x1, y1, x2, y2, depth) {
@@ -814,27 +934,28 @@ export function LightningToggle({ seed = 42 } = {}) {
             knobX = lerp(knobX, st.toggled ? st.w - 18 : 18, dt * 14);
             arcTime += dt;
 
-            ctx.fillStyle = st.toggled ? 'rgba(251,191,36,.15)' : 'rgba(255,255,255,.04)';
+            ctx.fillStyle = st.toggled ? onTint : 'rgba(255,255,255,.04)';
             roundRect(ctx, 0, 0, st.w, st.h, st.h / 2); ctx.fill();
 
             if (st.toggled && ((arcTime * 8) | 0) % 3 !== 0) {
                 rng.reset(((now / 80) | 0) * 7 + 1);
-                ctx.strokeStyle = 'rgba(251,191,36,.7)'; ctx.lineWidth = 1.5;
+                ctx.strokeStyle = arcColor; ctx.lineWidth = 1.5;
                 ctx.beginPath(); ctx.moveTo(8, st.h / 2); bolt(ctx, 8, st.h / 2, st.w - 8, st.h / 2, 3); ctx.stroke();
                 ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.lineWidth = 0.5;
                 ctx.beginPath(); ctx.moveTo(8, st.h / 2); bolt(ctx, 8, st.h / 2, st.w - 8, st.h / 2, 3); ctx.stroke();
             }
 
-            ctx.fillStyle = st.toggled ? '#fbbf24' : '#9999b8';
+            ctx.fillStyle = st.toggled ? P.accent : P.dim;
             ctx.beginPath(); ctx.arc(knobX, st.h / 2, 12, 0, Math.PI * 2); ctx.fill();
-            label(ctx, st.toggled ? 'ON' : 'OFF', st.w / 2, st.h + 14, st.toggled ? '#fbbf24' : '#8888aa');
+            label(ctx, st.toggled ? 'ON' : 'OFF', st.w / 2, st.h + 14, st.toggled ? P.accent : P.dim2);
             if (st.focused) focusRing(ctx, st.w, st.h, st.h / 2);
         },
     };
 }
 
 /** 4. DNA Toggle -- Double helix wraps around the track. */
-export function DNAToggle() {
+export function DNAToggle(o = {}) {
+    const P = resolveTheme(o, { accent: '#a78bfa', accent2: '#f472b6', accent3: '#c084fc', dim: '#9999b8', dim2: '#8888aa' });
     let knobX = 18, phase = 0;
     return {
         tick(ctx, dt, now, st) {
@@ -852,9 +973,9 @@ export function DNAToggle() {
                 // Const strand colors, per-dot alpha via globalAlpha (was two
                 // `rgba(...,${...})` templates built per dot per frame).
                 if (st.toggled) {
-                    ctx.fillStyle = '#a78bfa'; ctx.globalAlpha = 0.3 + Math.sin(phase + t * 6) * 0.2;
+                    ctx.fillStyle = P.accent; ctx.globalAlpha = 0.3 + Math.sin(phase + t * 6) * 0.2;
                     ctx.beginPath(); ctx.arc(x, y1, 2, 0, Math.PI * 2); ctx.fill();
-                    ctx.fillStyle = '#f472b6'; ctx.globalAlpha = 0.3 + Math.cos(phase + t * 6) * 0.2;
+                    ctx.fillStyle = P.accent2; ctx.globalAlpha = 0.3 + Math.cos(phase + t * 6) * 0.2;
                     ctx.beginPath(); ctx.arc(x, y2, 2, 0, Math.PI * 2); ctx.fill();
                     ctx.globalAlpha = 1;
                 } else {
@@ -869,9 +990,9 @@ export function DNAToggle() {
                 }
             }
 
-            ctx.fillStyle = st.toggled ? '#c084fc' : '#9999b8';
+            ctx.fillStyle = st.toggled ? P.accent3 : P.dim;
             ctx.beginPath(); ctx.arc(knobX, cy, 12, 0, Math.PI * 2); ctx.fill();
-            label(ctx, st.toggled ? 'ON' : 'OFF', st.w / 2, st.h + 14, st.toggled ? '#c084fc' : '#8888aa');
+            label(ctx, st.toggled ? 'ON' : 'OFF', st.w / 2, st.h + 14, st.toggled ? P.accent3 : P.dim2);
             if (st.focused) focusRing(ctx, st.w, st.h, st.h / 2);
         },
     };
@@ -883,7 +1004,12 @@ export function DNAToggle() {
 // ===========================================================
 
 /** 5. Heartbeat Button -- Heart icon pumps with particle burst on click. */
-export function HeartbeatButton({ seed = 42 } = {}) {
+export function HeartbeatButton(o = {}) {
+    const { seed = 42 } = o;
+    const P = resolveTheme(o, { accent: '#DC143C', accent2: '#ff3c64' });
+    const themed = !!(o.theme || o.colors);
+    const tintOn = themed ? rgbaOf(P.accent, .2) : 'rgba(220,20,60,.2)';
+    const tintOff = themed ? rgbaOf(P.accent, .08) : 'rgba(220,20,60,.08)';
     const rng = new Random(seed);
     // Fixed particle pool (life <= 0 == dead) -- no push/splice on the hot path.
     const PARTS = 32;
@@ -910,12 +1036,12 @@ export function HeartbeatButton({ seed = 42 } = {}) {
             beatPhase += dt * 5;
             const pulse = 1 + Math.sin(beatPhase) * 0.03;
 
-            ctx.fillStyle = st.active ? 'rgba(220,20,60,.2)' : 'rgba(220,20,60,.08)';
+            ctx.fillStyle = st.active ? tintOn : tintOff;
             roundRect(ctx, 0, 0, st.w, st.h, 10); ctx.fill();
 
             // Heart shape
             ctx.save(); ctx.translate(st.w / 2, st.h / 2); ctx.scale(scale * pulse, scale * pulse);
-            ctx.fillStyle = '#DC143C';
+            ctx.fillStyle = P.accent;
             ctx.beginPath();
             ctx.moveTo(0, 4); ctx.bezierCurveTo(-10, -6, -20, -2, -20, 4);
             ctx.bezierCurveTo(-20, 14, 0, 20, 0, 20);
@@ -925,7 +1051,7 @@ export function HeartbeatButton({ seed = 42 } = {}) {
 
             // Particles -- fixed pool, const color, alpha via globalAlpha
             ctx.globalCompositeOperation = 'screen';
-            ctx.fillStyle = '#ff3c64';
+            ctx.fillStyle = P.accent2;
             for (let i = 0; i < PARTS; i++) {
                 const p = part[i];
                 if (p.life <= 0) continue;
@@ -942,13 +1068,17 @@ export function HeartbeatButton({ seed = 42 } = {}) {
 }
 
 /** 6. Breathing Button -- Inhale/exhale pulse with particle halo. */
-export function BreathingButton() {
-    // Alpha-graded green LUT (same RGB #6ee7b6, quantized alpha) built once, so
-    // the pulsing glow is a const-string lookup instead of three
-    // `rgba(110,231,182,${...})` templates per frame. shadowColor's alpha is not
-    // globalAlpha, so a LUT (not globalAlpha) is the zero-alloc fit here.
+export function BreathingButton(o = {}) {
+    const P = resolveTheme(o, { accent: '#6ee7b6' });
+    const RGB = (o.theme || o.colors) ? rgbTriplet(P.accent, '110,231,182') : '110,231,182';
+    const FONT = pickFont(o, "600 12px 'Space Grotesk',sans-serif");
+    const TXT = pickText(o, 'BREATHE');
+    // Alpha-graded accent LUT (quantized alpha) built once, so the pulsing glow is
+    // a const-string lookup instead of three `rgba(...,${...})` templates per
+    // frame. shadowColor's alpha is not globalAlpha, so a LUT (not globalAlpha) is
+    // the zero-alloc fit here. RGB defaults to the historical green for byte-parity.
     const GREEN = [];
-    for (let i = 0; i <= 64; i++) GREEN[i] = 'rgba(110,231,182,' + (i / 64).toFixed(3) + ')';
+    for (let i = 0; i <= 64; i++) GREEN[i] = 'rgba(' + RGB + ',' + (i / 64).toFixed(3) + ')';
     function greenA(a) { const i = a <= 0 ? 0 : a >= 1 ? 64 : (a * 64) | 0; return GREEN[i]; }
     let phase = 0;
     return {
@@ -968,16 +1098,20 @@ export function BreathingButton() {
             ctx.lineWidth = 1;
             ctx.beginPath(); ctx.arc(st.w / 2, st.h / 2, st.w / 2 + radius, 0, Math.PI * 2); ctx.stroke();
 
-            ctx.fillStyle = '#6ee7b6';
-            ctx.font = "600 12px 'Space Grotesk',sans-serif"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText('BREATHE', st.w / 2, st.h / 2);
+            ctx.fillStyle = P.accent;
+            ctx.font = FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(TXT, st.w / 2, st.h / 2);
             if (st.focused) focusRing(ctx, st.w, st.h, 10);
         },
     };
 }
 
 /** 7. Ink Splash Button -- Calligraphy ink splatter on click. */
-export function InkSplashButton({ seed = 42 } = {}) {
+export function InkSplashButton(o = {}) {
+    const { seed = 42 } = o;
+    const P = resolveTheme(o, { accent: '#1e1e32', dim: '#e2e2f0' });
+    const FONT = pickFont(o, "600 13px 'Space Grotesk',sans-serif");
+    const TXT = pickText(o, 'INK');
     const rng = new Random(seed);
     // Fixed splat pool (life <= 0 == dead).
     const SPLATS = 32;
@@ -1005,12 +1139,12 @@ export function InkSplashButton({ seed = 42 } = {}) {
             ctx.save(); ctx.translate(st.w / 2, st.h / 2); ctx.scale(pressScale, pressScale); ctx.translate(-st.w / 2, -st.h / 2);
 
             ctx.fillStyle = 'rgba(255,255,255,.06)'; roundRect(ctx, 0, 0, st.w, st.h, 10); ctx.fill();
-            ctx.fillStyle = '#e2e2f0'; ctx.font = "600 13px 'Space Grotesk',sans-serif"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText('INK', st.w / 2, st.h / 2);
+            ctx.fillStyle = P.dim; ctx.font = FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(TXT, st.w / 2, st.h / 2);
             ctx.restore();
 
             // Splats -- fixed pool, const color, alpha via globalAlpha
-            ctx.fillStyle = '#1e1e32';
+            ctx.fillStyle = P.accent;
             for (let i = 0; i < SPLATS; i++) {
                 const s = splat[i];
                 if (s.life <= 0) continue;
@@ -1026,7 +1160,12 @@ export function InkSplashButton({ seed = 42 } = {}) {
 }
 
 /** 8. Pixel Dissolve Button -- Hover breaks into floating pixels, reforms on leave. */
-export function PixelDissolveButton({ seed = 42, cols = 16, rows = 5 } = {}) {
+export function PixelDissolveButton(o = {}) {
+    const { seed = 42, cols = 16, rows = 5 } = o;
+    const P = resolveTheme(o, { accent: '#a78bfa', dim: '#e2e2f0' });
+    const hoverTint = (o.theme || o.colors) ? rgbaOf(P.accent, .4) : 'rgba(167,139,250,.4)';
+    const FONT = pickFont(o, "600 12px 'Space Grotesk',sans-serif");
+    const TXT = pickText(o, 'DISSOLVE');
     const rng = new Random(seed);
     const N = cols * rows;
     const ox = new Float32Array(N), oy = new Float32Array(N);
@@ -1047,7 +1186,7 @@ export function PixelDissolveButton({ seed = 42, cols = 16, rows = 5 } = {}) {
         tick(ctx, dt, now, st) {
             dissolveT = lerp(dissolveT, st.hover ? 1 : 0, dt * 6);
 
-            ctx.fillStyle = st.hover ? 'rgba(167,139,250,.4)' : 'rgba(255,255,255,.12)';
+            ctx.fillStyle = st.hover ? hoverTint : 'rgba(255,255,255,.12)';
             const pw = st.w / cols, ph = st.h / rows;
 
             for (let i = 0; i < N; i++) {
@@ -1061,10 +1200,10 @@ export function PixelDissolveButton({ seed = 42, cols = 16, rows = 5 } = {}) {
             ctx.globalAlpha = 1;
 
             if (dissolveT < 0.3) {
-                ctx.fillStyle = '#e2e2f0'; ctx.font = "600 12px 'Space Grotesk',sans-serif";
+                ctx.fillStyle = P.dim; ctx.font = FONT;
                 ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
                 ctx.globalAlpha = 1 - dissolveT / 0.3;
-                ctx.fillText('DISSOLVE', st.w / 2, st.h / 2);
+                ctx.fillText(TXT, st.w / 2, st.h / 2);
                 ctx.globalAlpha = 1;
             }
             if (st.focused) focusRing(ctx, st.w, st.h, 0);
@@ -1073,9 +1212,16 @@ export function PixelDissolveButton({ seed = 42, cols = 16, rows = 5 } = {}) {
 }
 
 /** 9. Firework Button -- Shoots fireworks upward on click. */
-export function FireworkButton({ seed = 42 } = {}) {
+export function FireworkButton(o = {}) {
+    const { seed = 42 } = o;
+    // `colors` is the firework palette (like ConfettiButton); `theme` seeds it and
+    // recolors the label.
+    const colors = o.colors ? o.colors
+        : (o.theme ? [o.theme.light, o.theme.mid, o.theme.dark] : ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff', '#ff6bcb']);
+    const labelColor = (o.theme && o.theme.light) || '#fbbf24';
+    const FONT = pickFont(o, "600 13px 'Space Grotesk',sans-serif");
+    const TXT = pickText(o, '\u{1F386} FIRE');
     const rng = new Random(seed);
-    const colors = ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff', '#ff6bcb'];
     // Fixed pools (life <= 0 == dead) -- no push/splice on the hot path.
     const ROCKETS = 16, SPARKS = 256;
     const rocket = [];
@@ -1110,8 +1256,8 @@ export function FireworkButton({ seed = 42 } = {}) {
             pressScale = lerp(pressScale, 1, dt * 10);
             ctx.save(); ctx.translate(st.w / 2, st.h / 2); ctx.scale(pressScale, pressScale); ctx.translate(-st.w / 2, -st.h / 2);
             ctx.fillStyle = 'rgba(255,255,255,.06)'; roundRect(ctx, 0, 0, st.w, st.h, 10); ctx.fill();
-            ctx.fillStyle = '#fbbf24'; ctx.font = "600 13px 'Space Grotesk',sans-serif"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText('\u{1F386} FIRE', st.w / 2, st.h / 2);
+            ctx.fillStyle = labelColor; ctx.font = FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(TXT, st.w / 2, st.h / 2);
             ctx.restore();
 
             // Rockets -- fixed pool; on death, burst into sparks
@@ -1148,9 +1294,12 @@ export function FireworkButton({ seed = 42 } = {}) {
 // ===========================================================
 
 /** 10. Aurora Slider -- Northern lights colors flow along the filled track. */
-export function AuroraSlider() {
+export function AuroraSlider(o = {}) {
     const REF = 100, PHASES = 12;
-    const colors = ['#6ee7b6', '#38bdf8', '#a78bfa', '#c084fc'];
+    // `colors` is the aurora gradient palette; `theme` seeds it.
+    const colors = o.colors ? o.colors
+        : (o.theme ? [o.theme.light, o.theme.mid, o.theme.dark, o.theme.light] : ['#6ee7b6', '#38bdf8', '#a78bfa', '#c084fc']);
+    const glowColor = (o.theme && o.theme.light) || (o.colors && o.colors[0]) || '#6ee7b6';
     let time = 0;
     // The shimmer animated the gradient stops per frame. Pre-build one gradient
     // per animation phase in init (all 0..REF) and cycle them by time; scale to
@@ -1163,7 +1312,7 @@ export function AuroraSlider() {
                 const g = ctx.createLinearGradient(0, 0, REF, 0);
                 for (let i = 0; i < 4; i++) {
                     const pos = clamp(i / 3 + Math.sin(t + i) * 0.15, 0, 1);
-                    g.addColorStop(pos, colors[i]);
+                    g.addColorStop(pos, colors[i % colors.length]);
                 }
                 beams[p] = g;
             }
@@ -1176,7 +1325,7 @@ export function AuroraSlider() {
                 const beam = beams[((time * 2) | 0) % PHASES] || beams[0];
                 ctx.save();
                 ctx.scale(tx / REF, 1);
-                ctx.fillStyle = beam; ctx.shadowBlur = 8; ctx.shadowColor = '#6ee7b6';
+                ctx.fillStyle = beam; ctx.shadowBlur = 8; ctx.shadowColor = glowColor;
                 roundRect(ctx, 0, 12, REF, 4, 2); ctx.fill();
                 ctx.restore();
                 ctx.shadowBlur = 0;
@@ -1189,7 +1338,9 @@ export function AuroraSlider() {
 }
 
 /** 11. Wave Slider -- Audio waveform visualization on the filled track. */
-export function WaveSlider({ seed = 42 } = {}) {
+export function WaveSlider(o = {}) {
+    const { seed = 42 } = o;
+    const P = resolveTheme(o, { accent: '#f472b6' });
     const rng = new Random(seed);
     const bars = new Float32Array(40);
     return {
@@ -1200,10 +1351,10 @@ export function WaveSlider({ seed = 42 } = {}) {
             for (let i = 0; i < 40; i++) {
                 const bx = i * bw, active = bx < tx;
                 const h = bars[i] * 16 * (0.5 + Math.sin(now / 300 + i * 0.3) * 0.3);
-                ctx.fillStyle = active ? '#f472b6' : 'rgba(255,255,255,.06)';
+                ctx.fillStyle = active ? P.accent : 'rgba(255,255,255,.06)';
                 ctx.fillRect(bx + 1, 14 - h / 2, bw - 2, h);
             }
-            ctx.fillStyle = '#f472b6'; ctx.beginPath(); ctx.arc(tx, 14, 8, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = P.accent; ctx.beginPath(); ctx.arc(tx, 14, 8, 0, Math.PI * 2); ctx.fill();
             label(ctx, PCT[Math.round(st.val * 100)], st.w / 2, st.h + 10);
             if (st.focused) focusRing(ctx, st.w, st.h, 4);
         },
@@ -1211,7 +1362,8 @@ export function WaveSlider({ seed = 42 } = {}) {
 }
 
 /** 12. Elastic Band Slider -- Track rubber-bands ahead of thumb, snaps back. */
-export function ElasticBandSlider() {
+export function ElasticBandSlider(o = {}) {
+    const P = resolveTheme(o, { accent: '#fb923c' });
     let leadX = 0;
     return {
         tick(ctx, dt, now, st) {
@@ -1222,12 +1374,12 @@ export function ElasticBandSlider() {
             ctx.fillStyle = 'rgba(255,255,255,.06)'; roundRect(ctx, 0, 12, st.w, 4, 2); ctx.fill();
 
             // Elastic band (curves toward target)
-            ctx.strokeStyle = '#fb923c'; ctx.lineWidth = 3;
+            ctx.strokeStyle = P.accent; ctx.lineWidth = 3;
             ctx.beginPath(); ctx.moveTo(0, 14);
             ctx.quadraticCurveTo(leadX + stretch, 14 + stretch * 0.2, tx, 14);
             ctx.stroke();
 
-            ctx.fillStyle = '#fb923c'; ctx.beginPath(); ctx.arc(tx, 14, 9, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = P.accent; ctx.beginPath(); ctx.arc(tx, 14, 9, 0, Math.PI * 2); ctx.fill();
             label(ctx, PCT[Math.round(st.val * 100)], st.w / 2, st.h + 10);
             if (st.focused) focusRing(ctx, st.w, st.h, 4);
         },
@@ -1235,7 +1387,8 @@ export function ElasticBandSlider() {
 }
 
 /** 13. Gravity Slider -- Track sags under the weight of the thumb. */
-export function GravitySlider() {
+export function GravitySlider(o = {}) {
+    const P = resolveTheme(o, { accent: '#c084fc' });
     return {
         tick(ctx, dt, now, st) {
             const tx = st.val * st.w, sag = 8;
@@ -1247,13 +1400,13 @@ export function GravitySlider() {
             ctx.stroke();
 
             // Filled portion follows the sag
-            ctx.strokeStyle = '#c084fc'; ctx.lineWidth = 3;
+            ctx.strokeStyle = P.accent; ctx.lineWidth = 3;
             ctx.beginPath(); ctx.moveTo(0, 14);
             const midSag = sag * (tx / st.w);
             ctx.quadraticCurveTo(tx / 2, 14 + midSag, tx, 14 + sag * Math.sin(Math.PI * st.val));
             ctx.stroke();
 
-            ctx.fillStyle = '#c084fc'; ctx.beginPath();
+            ctx.fillStyle = P.accent; ctx.beginPath();
             ctx.arc(tx, 14 + sag * Math.sin(Math.PI * st.val), 10, 0, Math.PI * 2); ctx.fill();
 
             label(ctx, PCT[Math.round(st.val * 100)], st.w / 2, st.h + 14);
@@ -1268,12 +1421,13 @@ export function GravitySlider() {
 // ===========================================================
 
 /** 14. Orbit Loader -- Planets orbit a sun. Toggle starts/stops. */
-export function OrbitLoader() {
+export function OrbitLoader(o = {}) {
+    const P = resolveTheme(o, { accent: '#38bdf8', accent2: '#6ee7b6', accent3: '#fbbf24', dim2: '#8888aa' });
     let phase = 0;
     const planets = [
-        { r: 14, speed: 2.0, size: 3, color: '#38bdf8' },
-        { r: 22, speed: 1.2, size: 2.5, color: '#6ee7b6' },
-        { r: 30, speed: 0.7, size: 2, color: '#fbbf24' },
+        { r: 14, speed: 2.0, size: 3, color: P.accent },
+        { r: 22, speed: 1.2, size: 2.5, color: P.accent2 },
+        { r: 30, speed: 0.7, size: 2, color: P.accent3 },
     ];
     return {
         tick(ctx, dt, now, st) {
@@ -1291,15 +1445,16 @@ export function OrbitLoader() {
             }
 
             // Sun
-            ctx.fillStyle = '#fbbf24'; ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2); ctx.fill();
-            label(ctx, st.toggled ? 'LOADING...' : 'IDLE', st.w / 2, st.h + 14, st.toggled ? '#fbbf24' : '#8888aa');
+            ctx.fillStyle = P.accent3; ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2); ctx.fill();
+            label(ctx, st.toggled ? 'LOADING...' : 'IDLE', st.w / 2, st.h + 14, st.toggled ? P.accent3 : P.dim2);
             if (st.focused) focusRing(ctx, st.w, st.h, st.h / 2);
         },
     };
 }
 
 /** 15. Helix Loader -- DNA double helix spinning. */
-export function HelixLoader() {
+export function HelixLoader(o = {}) {
+    const P = resolveTheme(o, { accent: '#a78bfa', accent2: '#f472b6', accent3: '#c084fc', dim2: '#8888aa' });
     let phase = 0;
     return {
         tick(ctx, dt, now, st) {
@@ -1314,16 +1469,16 @@ export function HelixLoader() {
 
                 // Const strand colors, per-node alpha via globalAlpha (was three
                 // `rgba(...,${...})` templates per node per frame).
-                ctx.fillStyle = '#a78bfa'; ctx.globalAlpha = 0.2 + depth * 0.6;
+                ctx.fillStyle = P.accent; ctx.globalAlpha = 0.2 + depth * 0.6;
                 ctx.beginPath(); ctx.arc(x1, y1, 2 + depth, 0, Math.PI * 2); ctx.fill();
-                ctx.fillStyle = '#f472b6'; ctx.globalAlpha = 0.2 + (1 - depth) * 0.6;
+                ctx.fillStyle = P.accent2; ctx.globalAlpha = 0.2 + (1 - depth) * 0.6;
                 ctx.beginPath(); ctx.arc(x2, y2, 2 + (1 - depth), 0, Math.PI * 2); ctx.fill();
 
                 ctx.strokeStyle = '#ffffff'; ctx.globalAlpha = 0.03 + depth * 0.04;
                 ctx.lineWidth = 0.5; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
             }
             ctx.globalAlpha = 1;
-            label(ctx, st.toggled ? 'PROCESSING' : 'IDLE', st.w / 2, st.h + 14, st.toggled ? '#c084fc' : '#8888aa');
+            label(ctx, st.toggled ? 'PROCESSING' : 'IDLE', st.w / 2, st.h + 14, st.toggled ? P.accent3 : P.dim2);
             if (st.focused) focusRing(ctx, st.w, st.h, st.h / 2);
         },
     };
@@ -1335,7 +1490,8 @@ export function HelixLoader() {
 // ===========================================================
 
 /** 16. Ripple Checkbox -- Material-style ripple ring + morphing checkmark. */
-export function RippleCheck() {
+export function RippleCheck(o = {}) {
+    const P = resolveTheme(o, { accent: '#6ee7b6', surface: '#000', dim2: '#8888aa' });
     // Fixed ripple pool (life <= 0 == dead) -- no push/splice on the hot path.
     const RIPPLES = 8;
     const ripR = new Float64Array(RIPPLES);
@@ -1353,11 +1509,11 @@ export function RippleCheck() {
             const sz = Math.min(st.w, st.h), cx = sz / 2, cy = sz / 2;
 
             // Box
-            ctx.fillStyle = st.toggled ? '#6ee7b6' : 'rgba(255,255,255,.06)';
+            ctx.fillStyle = st.toggled ? P.accent : 'rgba(255,255,255,.06)';
             roundRect(ctx, 0, 0, sz, sz, 6); ctx.fill();
 
             // Ripples -- fixed pool, const color, alpha via globalAlpha
-            ctx.strokeStyle = '#6ee7b6'; ctx.lineWidth = 2;
+            ctx.strokeStyle = P.accent; ctx.lineWidth = 2;
             for (let i = 0; i < RIPPLES; i++) {
                 if (ripLife[i] <= 0) continue;
                 ripR[i] += 50 * dt; ripLife[i] -= 2 * dt;
@@ -1369,7 +1525,7 @@ export function RippleCheck() {
 
             // Checkmark (animated draw)
             if (checkT > 0.01) {
-                ctx.strokeStyle = '#000'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+                ctx.strokeStyle = P.surface; ctx.lineWidth = 3; ctx.lineCap = 'round';
                 ctx.beginPath();
                 const p1 = clamp(checkT * 2, 0, 1); // First stroke
                 const p2 = clamp(checkT * 2 - 1, 0, 1); // Second stroke
@@ -1378,14 +1534,15 @@ export function RippleCheck() {
                 if (p2 > 0) ctx.lineTo(cx + 14 * p2, cy + 7 - 14 * p2);
                 ctx.stroke(); ctx.lineCap = 'butt';
             }
-            label(ctx, st.toggled ? '\u2713' : '\u25CB', sz / 2, sz + 12, st.toggled ? '#6ee7b6' : '#8888aa');
+            label(ctx, st.toggled ? '\u2713' : '\u25CB', sz / 2, sz + 12, st.toggled ? P.accent : P.dim2);
             if (st.focused) focusRing(ctx, sz, sz, 6);
         },
     };
 }
 
 /** 17. Morph Checkbox -- X morphs into checkmark smoothly. */
-export function MorphCheck() {
+export function MorphCheck(o = {}) {
+    const P = resolveTheme(o, { accent: '#38bdf8', dim: '#9999b8', dim2: '#8888aa' });
     let t = 0;
     return {
         tick(ctx, dt, now, st) {
@@ -1397,12 +1554,12 @@ export function MorphCheck() {
                 ctx.fillStyle = 'rgba(255,255,255,.06)';
                 roundRect(ctx, 0, 0, sz, sz, 6); ctx.fill();
             } else {
-                ctx.fillStyle = '#38bdf8'; ctx.globalAlpha = lerp(0, 0.2, t);
+                ctx.fillStyle = P.accent; ctx.globalAlpha = lerp(0, 0.2, t);
                 roundRect(ctx, 0, 0, sz, sz, 6); ctx.fill();
                 ctx.globalAlpha = 1;
             }
 
-            ctx.strokeStyle = t > 0.5 ? '#38bdf8' : '#9999b8'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+            ctx.strokeStyle = t > 0.5 ? P.accent : P.dim; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
 
             // Morph: X -> checkmark by interpolating endpoints
             const x1a = cx - 8, y1a = cy - 8; // X top-left
@@ -1425,7 +1582,7 @@ export function MorphCheck() {
             ctx.stroke();
             ctx.lineCap = 'butt';
 
-            label(ctx, st.toggled ? '\u2713' : '\u2715', sz / 2, sz + 12, st.toggled ? '#38bdf8' : '#8888aa');
+            label(ctx, st.toggled ? '\u2713' : '\u2715', sz / 2, sz + 12, st.toggled ? P.accent : P.dim2);
             if (st.focused) focusRing(ctx, sz, sz, 6);
         },
     };
@@ -1437,7 +1594,11 @@ export function MorphCheck() {
 // ===========================================================
 
 /** 18. Flame Counter -- Number with rising heat particles driven by slider value. */
-export function FlameCounter({ seed = 42 } = {}) {
+export function FlameCounter(o = {}) {
+    const { seed = 42 } = o;
+    const P = resolveTheme(o, { accent: '#ff6b6b', accent2: '#fbbf24', dim: '#9999b8' });
+    const FONT = pickFont(o, "700 28px 'JetBrains Mono',monospace");
+    const TXT = pickText(o, 'HEAT');
     const rng = new Random(seed);
     // Fixed ember pool + heat-color LUT (rgb quantized by value), so neither the
     // pool nor the per-ember color allocates. The number string is rebuilt only
@@ -1480,18 +1641,22 @@ export function FlameCounter({ seed = 42 } = {}) {
             ctx.globalCompositeOperation = 'source-over';
 
             // Number
-            ctx.fillStyle = st.val > 0.7 ? '#ff6b6b' : st.val > 0.3 ? '#fbbf24' : '#9999b8';
-            ctx.font = "700 28px 'JetBrains Mono',monospace"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillStyle = st.val > 0.7 ? P.accent : st.val > 0.3 ? P.accent2 : P.dim;
+            ctx.font = FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             ctx.fillText(numStr, st.w / 2, st.h / 2);
 
-            label(ctx, 'HEAT', st.w / 2, st.h + 12);
+            label(ctx, TXT, st.w / 2, st.h + 12);
             if (st.focused) focusRing(ctx, st.w, st.h, 10);
         },
     };
 }
 
 /** 19. Glitch Counter -- Number glitches and jitters as slider value increases. */
-export function GlitchCounter({ seed = 42 } = {}) {
+export function GlitchCounter(o = {}) {
+    const { seed = 42 } = o;
+    const P = resolveTheme(o, { accent: '#ff0055', accent2: '#00ffcc', dim: '#e2e2f0' });
+    const FONT = pickFont(o, "700 28px 'JetBrains Mono',monospace");
+    const TXT = pickText(o, 'SIGNAL');
     const rng = new Random(seed);
     let numStr = '0', lastNum = -1;
     return {
@@ -1515,22 +1680,22 @@ export function GlitchCounter({ seed = 42 } = {}) {
 
             if (intensity > 0.3 && rng.next() > 0.6) {
                 ctx.globalCompositeOperation = 'screen';
-                ctx.font = "700 28px 'JetBrains Mono',monospace"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.font = FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
                 // RGB split -- const channel colors, shared alpha via globalAlpha
                 ctx.globalAlpha = intensity * 0.4;
-                ctx.fillStyle = '#ff0055';
+                ctx.fillStyle = P.accent;
                 ctx.fillText(numStr, st.w / 2 + jx - 2, st.h / 2 + jy);
-                ctx.fillStyle = '#00ffcc';
+                ctx.fillStyle = P.accent2;
                 ctx.fillText(numStr, st.w / 2 + jx + 2, st.h / 2 + jy);
                 ctx.globalAlpha = 1;
                 ctx.globalCompositeOperation = 'source-over';
             }
 
-            ctx.fillStyle = '#e2e2f0';
-            ctx.font = "700 28px 'JetBrains Mono',monospace"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillStyle = P.dim;
+            ctx.font = FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             ctx.fillText(numStr, st.w / 2 + jx, st.h / 2 + jy);
 
-            label(ctx, 'SIGNAL', st.w / 2, st.h + 12);
+            label(ctx, TXT, st.w / 2, st.h + 12);
             if (st.focused) focusRing(ctx, st.w, st.h, 10);
         },
     };
@@ -1542,7 +1707,9 @@ export function GlitchCounter({ seed = 42 } = {}) {
 // ===========================================================
 
 /** 20. Bubble Rating -- 5 bubbles inflate based on slider position. Click pops them. */
-export function BubbleRating({ seed = 42 } = {}) {
+export function BubbleRating(o = {}) {
+    const { seed = 42 } = o;
+    const P = resolveTheme(o, { accent: '#38bdf8', dim: '#9999b8' });
     const rng = new Random(seed);
     const R5 = ['0 / 5', '1 / 5', '2 / 5', '3 / 5', '4 / 5', '5 / 5']; // const labels
     const POPS = 32;
@@ -1575,11 +1742,11 @@ export function BubbleRating({ seed = 42 } = {}) {
                 const cx = gap * i + gap / 2, cy = st.h / 2;
 
                 // Bubble -- const color, active alpha via globalAlpha
-                if (active) { ctx.fillStyle = '#38bdf8'; ctx.globalAlpha = 0.3 + sizes[i] / 20; }
+                if (active) { ctx.fillStyle = P.accent; ctx.globalAlpha = 0.3 + sizes[i] / 20; }
                 else { ctx.fillStyle = 'rgba(255,255,255,.05)'; ctx.globalAlpha = 1; }
                 ctx.beginPath(); ctx.arc(cx, cy, sizes[i], 0, Math.PI * 2); ctx.fill();
                 ctx.globalAlpha = 1;
-                ctx.strokeStyle = active ? '#38bdf8' : 'rgba(255,255,255,.08)';
+                ctx.strokeStyle = active ? P.accent : 'rgba(255,255,255,.08)';
                 ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, sizes[i], 0, Math.PI * 2); ctx.stroke();
 
                 // Highlight
@@ -1590,7 +1757,7 @@ export function BubbleRating({ seed = 42 } = {}) {
             }
 
             // Pop particles -- fixed pool, const color, alpha via globalAlpha
-            ctx.fillStyle = '#38bdf8';
+            ctx.fillStyle = P.accent;
             for (let i = 0; i < POPS; i++) {
                 const p = pop[i];
                 if (p.life <= 0) continue;
@@ -1601,7 +1768,7 @@ export function BubbleRating({ seed = 42 } = {}) {
             }
             ctx.globalAlpha = 1;
 
-            label(ctx, R5[rating], st.w / 2, st.h + 12, rating >= 4 ? '#38bdf8' : '#9999b8');
+            label(ctx, R5[rating], st.w / 2, st.h + 12, rating >= 4 ? P.accent : P.dim);
             if (st.focused) focusRing(ctx, st.w, st.h, 4);
         },
         onDrag(val) {
@@ -1620,14 +1787,18 @@ export function BubbleRating({ seed = 42 } = {}) {
 // ===========================================================
 
 /** 1. Volume Knob -- Rotary dial with tick marks and arc indicator. */
-export function VolumeKnob() {
+export function VolumeKnob(o = {}) {
+    const P = resolveTheme(o, { accent: '#6ee7b6', accent2: '#38bdf8', dim: '#e2e2f0' });
+    const tickOn = (o.theme || o.colors) ? rgbaOf(P.accent, .5) : 'rgba(110,231,182,.5)';
+    const FONT = pickFont(o, "700 14px 'JetBrains Mono',monospace");
+    const TXT = pickText(o, 'VOLUME');
     let displayVal = 0, grad = null;
     let numStr = '0', lastNum = -1;
     return {
         init(c, w, h) {
             // Value-arc gradient depends only on w/h (fixed per mount) -> build once.
             grad = c.createLinearGradient(0, h, w, 0);
-            grad.addColorStop(0, '#6ee7b6'); grad.addColorStop(1, '#38bdf8');
+            grad.addColorStop(0, P.accent); grad.addColorStop(1, P.accent2);
         },
         tick(c,dt,now,st) {
             displayVal = lerp(displayVal, st.val, dt * 12);
@@ -1647,7 +1818,7 @@ export function VolumeKnob() {
             for(let i=0;i<=10;i++){
                 const a=startA+i/10*range;
                 const inner=R-6, outer=R+2;
-                c.strokeStyle=i/10<=displayVal?'rgba(110,231,182,.5)':'rgba(255,255,255,.08)';
+                c.strokeStyle=i/10<=displayVal?tickOn:'rgba(255,255,255,.08)';
                 c.lineWidth=1; c.beginPath();
                 c.moveTo(cx+Math.cos(a)*inner,cy+Math.sin(a)*inner);
                 c.lineTo(cx+Math.cos(a)*outer,cy+Math.sin(a)*outer);
@@ -1665,18 +1836,19 @@ export function VolumeKnob() {
             // Value text (rebuilt only when the integer changes)
             const v = Math.round(displayVal * 100);
             if (v !== lastNum) { lastNum = v; numStr = String(v); }
-            c.fillStyle='#e2e2f0'; c.font="700 14px 'JetBrains Mono',monospace"; c.textAlign='center'; c.textBaseline='middle';
+            c.fillStyle=P.dim; c.font=FONT; c.textAlign='center'; c.textBaseline='middle';
             c.fillText(numStr,cx,cy);
-            lbl(c,'VOLUME',cx,st.h+10);
+            lbl(c,TXT,cx,st.h+10);
             if(st.focused)fr(c,st.w,st.h,st.h/2);
         },
     };
 }
 
 /** 2. Compass Knob -- Needle points based on slider value (0=N, 0.5=S, 1=N). */
-export function CompassKnob() {
+export function CompassKnob(o = {}) {
+    const P = resolveTheme(o, { accent: '#ff6b6b', dim: '#9999b8', surface: '#333' });
     const dirs = ['N', 'E', 'S', 'W'];                          // hoisted out of tick
-    const cols = ['#ff6b6b', '#9999b8', '#9999b8', '#9999b8'];  // (were per-frame arrays)
+    const cols = [P.accent, P.dim, P.dim, P.dim];               // (were per-frame arrays)
     let needleA = 0;
     let degStr = '0\u00B0', lastDeg = -1;
     return {
@@ -1698,14 +1870,14 @@ export function CompassKnob() {
 
             // Needle
             c.save(); c.translate(cx,cy); c.rotate(needleA-Math.PI/2);
-            c.fillStyle='#ff6b6b';
+            c.fillStyle=P.accent;
             c.beginPath(); c.moveTo(0,-R+18); c.lineTo(-4,4); c.lineTo(4,4); c.closePath(); c.fill();
             c.fillStyle='rgba(255,255,255,.15)';
             c.beginPath(); c.moveTo(0,R-18); c.lineTo(-4,-4); c.lineTo(4,-4); c.closePath(); c.fill();
             c.restore();
 
             // Center pin
-            c.fillStyle='#333'; c.beginPath(); c.arc(cx,cy,4,0,PI2); c.fill();
+            c.fillStyle=P.surface; c.beginPath(); c.arc(cx,cy,4,0,PI2); c.fill();
             c.strokeStyle='rgba(255,255,255,.1)'; c.lineWidth=1; c.beginPath(); c.arc(cx,cy,4,0,PI2); c.stroke();
 
             const deg = Math.round(st.val * 360);
@@ -1722,7 +1894,11 @@ export function CompassKnob() {
 // ===========================================================
 
 /** 3. Ring Progress -- Circular progress with animated fill and particles at the tip. */
-export function RingProgress({seed=42}={}) {
+export function RingProgress(o = {}) {
+    const {seed=42}=o;
+    const P = resolveTheme(o, { accent: '#6ee7b6', accent2: '#a78bfa', dim: '#e2e2f0' });
+    const tail = (o.theme || o.colors) ? rgbaOf(P.accent, .2) : 'rgba(110,231,182,.2)';
+    const FONT = pickFont(o, "700 16px 'JetBrains Mono',monospace");
     const rng=new Random(seed);
     // Fixed spark pool + a bounded set of conic gradients (one per progress
     // level) built in init, so the green stop still tracks the arc tip with zero
@@ -1743,9 +1919,9 @@ export function RingProgress({seed=42}={}) {
         init(c, w, h) {
             for (let p = 0; p < GPHASES; p++) {
                 const g = c.createConicGradient(-Math.PI / 2, w / 2, h / 2);
-                g.addColorStop(0, '#a78bfa');
-                g.addColorStop((p / (GPHASES - 1)) * 0.95, '#6ee7b6');
-                g.addColorStop(1, 'rgba(110,231,182,.2)');
+                g.addColorStop(0, P.accent2);
+                g.addColorStop((p / (GPHASES - 1)) * 0.95, P.accent);
+                g.addColorStop(1, tail);
                 grads[p] = g;
             }
         },
@@ -1767,7 +1943,7 @@ export function RingProgress({seed=42}={}) {
                 const tx=cx+Math.cos(ea)*R,ty=cy+Math.sin(ea)*R;
                 spawn(tx, ty);
             }
-            c.fillStyle = '#6ee7b6';
+            c.fillStyle = P.accent;
             for(let i=0;i<SPARKS;i++){
                 const s=spark[i];
                 if(s.life<=0)continue;
@@ -1779,7 +1955,7 @@ export function RingProgress({seed=42}={}) {
             c.globalAlpha=1;
 
             // Percentage
-            c.fillStyle='#e2e2f0';c.font="700 16px 'JetBrains Mono',monospace";c.textAlign='center';c.textBaseline='middle';
+            c.fillStyle=P.dim;c.font=FONT;c.textAlign='center';c.textBaseline='middle';
             c.fillText(PCT[Math.round(displayVal*100)],cx,cy);
             if(st.focused)fr(c,st.w,st.h,st.h/2);
         },
@@ -1787,7 +1963,9 @@ export function RingProgress({seed=42}={}) {
 }
 
 /** 4. Battery Gauge -- Battery icon that fills and changes color. */
-export function BatteryGauge() {
+export function BatteryGauge(o = {}) {
+    const P = resolveTheme(o, { accent: '#6ee7b6', accent2: '#fbbf24', accent3: '#ff6b6b', dim: '#e2e2f0' });
+    const FONT = pickFont(o, "600 10px 'JetBrains Mono',monospace");
     let displayVal=0;
     return {
         tick(c,dt,now,st) {
@@ -1803,7 +1981,7 @@ export function BatteryGauge() {
 
             // Fill
             const fillW=Math.max(0,(bw-6)*displayVal);
-            const col=displayVal<.2?'#ff6b6b':displayVal<.5?'#fbbf24':'#6ee7b6';
+            const col=displayVal<.2?P.accent3:displayVal<.5?P.accent2:P.accent;
             c.fillStyle=col;
             rr(c,bx+3,by+3,fillW,bh-6,2);c.fill();
 
@@ -1820,7 +1998,7 @@ export function BatteryGauge() {
                 c.fillStyle='rgba(255,80,80,.15)';rr(c,bx,by,bw,bh,r);c.fill();
             }
 
-            c.fillStyle='#e2e2f0';c.font="600 10px 'JetBrains Mono',monospace";c.textAlign='center';c.textBaseline='middle';
+            c.fillStyle=P.dim;c.font=FONT;c.textAlign='center';c.textBaseline='middle';
             c.fillText(PCT[Math.round(displayVal*100)],bx+bw/2,by+bh/2);
             if(st.focused)fr(c,st.w+4,st.h,r);
         },
@@ -1828,7 +2006,8 @@ export function BatteryGauge() {
 }
 
 /** 5. Signal Meter -- WiFi-style signal bars. */
-export function SignalMeter() {
+export function SignalMeter(o = {}) {
+    const P = resolveTheme(o, { accent: '#6ee7b6', accent2: '#fbbf24', accent3: '#ff6b6b', dim: '#9999b8' });
     let bars=[0,0,0,0,0];
     return {
         tick(c,dt,now,st) {
@@ -1844,10 +2023,10 @@ export function SignalMeter() {
                 const maxH=8+i*6, h=maxH*bars[i]+2;
                 const x=ox+i*(bw+gap), y=st.h-6-h;
                 const active=bars[i]>.5;
-                c.fillStyle=active?(st.val>.6?'#6ee7b6':st.val>.3?'#fbbf24':'#ff6b6b'):'rgba(255,255,255,.06)';
+                c.fillStyle=active?(st.val>.6?P.accent:st.val>.3?P.accent2:P.accent3):'rgba(255,255,255,.06)';
                 rr(c,x,y,bw,h,2);c.fill();
             }
-            lbl(c,level+'/5',st.w/2,st.h+10,st.val>.6?'#6ee7b6':'#9999b8');
+            lbl(c,level+'/5',st.w/2,st.h+10,st.val>.6?P.accent:P.dim);
             if(st.focused)fr(c,st.w,st.h,4);
         },
     };
@@ -1859,7 +2038,12 @@ export function SignalMeter() {
 // ===========================================================
 
 /** 6. Pill Tabs -- 3 segmented tabs with sliding indicator. */
-export function PillTabs() {
+export function PillTabs(o = {}) {
+    const P = resolveTheme(o, { accent: '#c4b5fd', accent2: '#a78bfa', dim: '#9999b8' });
+    const themed = !!(o.theme || o.colors);
+    const indFill = themed ? rgbaOf(P.accent2, .12) : 'rgba(167,139,250,.12)';
+    const indStroke = themed ? rgbaOf(P.accent2, .25) : 'rgba(167,139,250,.25)';
+    const FONT = pickFont(o, "600 11px 'Space Grotesk',sans-serif");
     let indicatorX=0, indicatorW=0, selected=0;
     const labels=['Alpha','Beta','Gamma'];
     return {
@@ -1877,13 +2061,13 @@ export function PillTabs() {
             c.fillStyle='rgba(255,255,255,.03)';rr(c,0,0,st.w,st.h,st.h/2);c.fill();
 
             // Indicator
-            c.fillStyle='rgba(167,139,250,.12)';c.strokeStyle='rgba(167,139,250,.25)';c.lineWidth=1;
+            c.fillStyle=indFill;c.strokeStyle=indStroke;c.lineWidth=1;
             rr(c,indicatorX+2,2,indicatorW-4,st.h-4,st.h/2-2);c.fill();c.stroke();
 
             // Labels
-            c.font="600 11px 'Space Grotesk',sans-serif";c.textAlign='center';c.textBaseline='middle';
+            c.font=FONT;c.textAlign='center';c.textBaseline='middle';
             for(let i=0;i<3;i++){
-                c.fillStyle=i===selected?'#c4b5fd':'#9999b8';
+                c.fillStyle=i===selected?P.accent:P.dim;
                 c.fillText(labels[i],tw*i+tw/2,st.h/2);
             }
             if(st.focused)fr(c,st.w,st.h,st.h/2);
@@ -1892,7 +2076,12 @@ export function PillTabs() {
 }
 
 /** 7. Stepper -- +/- buttons with spring counter. */
-export function Stepper() {
+export function Stepper(o = {}) {
+    const P = resolveTheme(o, { accent: '#6ee7b6', accent2: '#ff6b6b', dim: '#e2e2f0' });
+    const themed = !!(o.theme || o.colors);
+    const minusFlash = themed ? rgbaOf(P.accent2, .15) : 'rgba(255,100,100,.15)';
+    const plusFlash = themed ? rgbaOf(P.accent, .15) : 'rgba(110,231,182,.15)';
+    const FONT = pickFont(o, "700 18px 'JetBrains Mono',monospace");
     let count=0,displayCount=0,flashDir=0,flashTimer=0;
     return {
         onClick(x,y,st) {
@@ -1909,18 +2098,18 @@ export function Stepper() {
 
             // Minus zone
             const third=st.w/3;
-            c.fillStyle=flashDir===-1&&flashTimer>0?'rgba(255,100,100,.15)':'rgba(255,255,255,.03)';
+            c.fillStyle=flashDir===-1&&flashTimer>0?minusFlash:'rgba(255,255,255,.03)';
             rr(c,2,2,third-4,st.h-4,8);c.fill();
-            c.fillStyle='#ff6b6b';c.font="700 18px 'JetBrains Mono',monospace";c.textAlign='center';c.textBaseline='middle';
+            c.fillStyle=P.accent2;c.font=FONT;c.textAlign='center';c.textBaseline='middle';
             c.fillText('\u2212',third/2,st.h/2);
 
             // Plus zone
-            c.fillStyle=flashDir===1&&flashTimer>0?'rgba(110,231,182,.15)':'rgba(255,255,255,.03)';
+            c.fillStyle=flashDir===1&&flashTimer>0?plusFlash:'rgba(255,255,255,.03)';
             rr(c,third*2+2,2,third-4,st.h-4,8);c.fill();
-            c.fillStyle='#6ee7b6';c.fillText('+',third*2+third/2,st.h/2);
+            c.fillStyle=P.accent;c.fillText('+',third*2+third/2,st.h/2);
 
             // Counter
-            c.fillStyle='#e2e2f0';c.font="700 20px 'JetBrains Mono',monospace";
+            c.fillStyle=P.dim;c.font="700 20px 'JetBrains Mono',monospace";
             c.fillText(Math.round(displayCount),st.w/2,st.h/2);
 
             if(st.focused)fr(c,st.w,st.h,10);
@@ -1929,9 +2118,14 @@ export function Stepper() {
 }
 
 /** 8. Radio Orbit -- 4 options arranged in a circle. Slider picks one. */
-export function RadioOrbit() {
+export function RadioOrbit(o = {}) {
     let selectedGlow=new Float32Array(4);
-    const names=['A','B','C','D'],colors=['#ff6b6b','#fbbf24','#6ee7b6','#38bdf8'];
+    const names=['A','B','C','D'];
+    // `colors` is the 4-node palette; `theme` seeds it. Normalised to length 4 so
+    // the body's colors[i] stays valid for any override.
+    const base = o.colors ? o.colors
+        : (o.theme ? [o.theme.light, o.theme.mid, o.theme.dark, o.theme.light] : ['#ff6b6b','#fbbf24','#6ee7b6','#38bdf8']);
+    const colors = base.length >= 4 ? base : [base[0], base[1 % base.length], base[2 % base.length], base[3 % base.length]];
     const OPTS=['OPTION A','OPTION B','OPTION C','OPTION D']; // const (was 'OPTION '+name concat)
     return {
         tick(c,dt,now,st) {
@@ -1972,9 +2166,14 @@ export function RadioOrbit() {
 // ===========================================================
 
 /** 9. Password Strength -- Segmented bar with color progression and label. */
-export function PasswordStrength() {
+export function PasswordStrength(o = {}) {
     let segs=[0,0,0,0];
-    const labels=['WEAK','FAIR','GOOD','STRONG'],colors=['#ff6b6b','#fbbf24','#38bdf8','#6ee7b6'];
+    const labels=['WEAK','FAIR','GOOD','STRONG'];
+    // `colors` is the 4-step strength ramp; `theme` seeds it. Normalised to 4.
+    const base = o.colors ? o.colors
+        : (o.theme ? [o.theme.light, o.theme.mid, o.theme.dark, o.theme.light] : ['#ff6b6b','#fbbf24','#38bdf8','#6ee7b6']);
+    const colors = base.length >= 4 ? base : [base[0], base[1 % base.length], base[2 % base.length], base[3 % base.length]];
+    const noneColor = (o.theme && o.theme.mid) || '#666';
     return {
         tick(c,dt,now,st) {
             const level=Math.ceil(st.val*4);
@@ -1993,14 +2192,23 @@ export function PasswordStrength() {
             }
 
             const idx=clamp(level-1,0,3);
-            lbl(c,level>0?labels[idx]:'NONE',st.w/2,st.h/2+16,level>0?colors[idx]:'#666');
+            lbl(c,level>0?labels[idx]:'NONE',st.w/2,st.h/2+16,level>0?colors[idx]:noneColor);
             if(st.focused)fr(c,st.w,st.h,4);
         },
     };
 }
 
 /** 10. Water Level -- Animated wave surface inside a container. */
-export function WaterLevel() {
+export function WaterLevel(o = {}) {
+    const P = resolveTheme(o, { accent: '#38bdf8', accent2: '#6ee7b6', accent3: '#fbbf24', dim: '#e2e2f0' });
+    const themed = !!(o.theme || o.colors);
+    const surfHi = themed ? rgbaOf(P.accent, .3) : 'rgba(56,189,248,.3)';
+    const surfMid = themed ? rgbaOf(P.accent2, .25) : 'rgba(110,231,182,.25)';
+    const surfLo = themed ? rgbaOf(P.accent3, .2) : 'rgba(251,191,36,.2)';
+    const deepHi = themed ? rgbaOf(P.accent, .15) : 'rgba(56,189,248,.15)';
+    const deepMid = themed ? rgbaOf(P.accent2, .1) : 'rgba(110,231,182,.1)';
+    const deepLo = themed ? rgbaOf(P.accent3, .08) : 'rgba(251,191,36,.08)';
+    const FONT = pickFont(o, "700 12px 'JetBrains Mono',monospace");
     let displayVal=0, wavePhase=0;
     return {
         tick(c,dt,now,st) {
@@ -2016,7 +2224,7 @@ export function WaterLevel() {
             c.save();c.beginPath();rr(c,bx+1,by+1,bw-2,bh-2,5);c.clip();
 
             // Wave surface
-            c.fillStyle=displayVal>.7?'rgba(56,189,248,.3)':displayVal>.3?'rgba(110,231,182,.25)':'rgba(251,191,36,.2)';
+            c.fillStyle=displayVal>.7?surfHi:displayVal>.3?surfMid:surfLo;
             c.beginPath();c.moveTo(bx,by+bh);
             for(let x=0;x<=bw;x++){
                 const wave=Math.sin(wavePhase+x*0.08)*3+Math.sin(wavePhase*1.5+x*0.12)*2;
@@ -2025,12 +2233,12 @@ export function WaterLevel() {
             c.lineTo(bx+bw,by+bh);c.closePath();c.fill();
 
             // Deeper water
-            c.fillStyle=displayVal>.7?'rgba(56,189,248,.15)':displayVal>.3?'rgba(110,231,182,.1)':'rgba(251,191,36,.08)';
+            c.fillStyle=displayVal>.7?deepHi:displayVal>.3?deepMid:deepLo;
             c.fillRect(bx,waterY+5,bw,bh);
 
             c.restore();
 
-            c.fillStyle='#e2e2f0';c.font="700 12px 'JetBrains Mono',monospace";c.textAlign='center';c.textBaseline='middle';
+            c.fillStyle=P.dim;c.font=FONT;c.textAlign='center';c.textBaseline='middle';
             c.fillText(PCT[Math.round(displayVal*100)],st.w/2,st.h/2);
             if(st.focused)fr(c,st.w,st.h,6);
         },
@@ -2038,14 +2246,21 @@ export function WaterLevel() {
 }
 
 /** 11. Heat Map -- 5×3 grid of cells that heat up based on slider. */
-export function HeatMap({seed=42}={}) {
+export function HeatMap(o = {}) {
+    const {seed=42}=o;
+    const P = resolveTheme(o, { accent: '#ff5014', dim: '#9999b8' });
     const rng=new Random(seed);
     const N=15,thresholds=new Float32Array(N);
     let vals=new Float32Array(N);
-    // Heat-color LUT (rgb quantized by heat): a const lookup + globalAlpha
-    // instead of a per-cell rgb() template every frame.
+    // Heat-color LUT (rgb quantized by heat): a const lookup + globalAlpha instead
+    // of a per-cell rgb() template every frame. Default = the historical fire ramp
+    // (byte-identical); a theme/colors override interpolates cool -> accent.
+    const hotP = (o.theme || o.colors) ? rgbTriplet(P.accent, '255,80,20').split(',').map(Number) : null;
     const HEATC=[];
-    for(let i=0;i<=32;i++)HEATC[i]='rgb('+Math.round(100+i/32*155)+','+Math.round(60+i/32*20)+','+Math.round(60-i/32*40)+')';
+    for(let i=0;i<=32;i++){
+        if(hotP){const p=i/32;HEATC[i]='rgb('+Math.round(100+(hotP[0]-100)*p)+','+Math.round(60+(hotP[1]-60)*p)+','+Math.round(60+(hotP[2]-60)*p)+')';}
+        else HEATC[i]='rgb('+Math.round(100+i/32*155)+','+Math.round(60+i/32*20)+','+Math.round(60-i/32*40)+')';
+    }
     return {
         init(){for(let i=0;i<N;i++)thresholds[i]=rng.range(0,1)},
         tick(c,dt,now,st) {
@@ -2063,7 +2278,7 @@ export function HeatMap({seed=42}={}) {
                 rr(c,x,y,cw,ch,3);c.fill();
                 c.globalAlpha=1;
             }
-            lbl(c,PCT[Math.round(st.val*100)],st.w/2,st.h+10);
+            lbl(c,PCT[Math.round(st.val*100)],st.w/2,st.h+10,P.dim);
             if(st.focused)fr(c,st.w,st.h,3);
         },
     };
@@ -2075,7 +2290,9 @@ export function HeatMap({seed=42}={}) {
 // ===========================================================
 
 /** 12. Day/Night Toggle -- Sun/moon transition with star particles. */
-export function DayNightToggle({seed=42}={}) {
+export function DayNightToggle(o = {}) {
+    const {seed=42}=o;
+    const P = resolveTheme(o, { accent: '#fbbf24', dim: '#9999b8', surface: '#d4d4e8' });
     const rng=new Random(seed);
     // Sky-color LUT (day->night rgb quantized by t): a const lookup, not an
     // rgb() template per frame. Stars are a fixed pool filled in init.
@@ -2108,14 +2325,14 @@ export function DayNightToggle({seed=42}={}) {
             const orbX=lerp(18,st.w-18,t);
             if(t<.5){
                 // Sun
-                c.fillStyle='#fbbf24';c.beginPath();c.arc(orbX,st.h/2,10,0,PI2);c.fill();
+                c.fillStyle=P.accent;c.beginPath();c.arc(orbX,st.h/2,10,0,PI2);c.fill();
                 // Rays -- const color, alpha via globalAlpha
-                c.strokeStyle='#fbbf24';c.globalAlpha=.3*(1-t*2);c.lineWidth=1;
+                c.strokeStyle=P.accent;c.globalAlpha=.3*(1-t*2);c.lineWidth=1;
                 for(let i=0;i<8;i++){const a=now/800+i*Math.PI/4;c.beginPath();c.moveTo(orbX+Math.cos(a)*12,st.h/2+Math.sin(a)*12);c.lineTo(orbX+Math.cos(a)*16,st.h/2+Math.sin(a)*16);c.stroke()}
                 c.globalAlpha=1;
             } else {
                 // Moon
-                c.fillStyle='#d4d4e8';c.beginPath();c.arc(orbX,st.h/2,10,0,PI2);c.fill();
+                c.fillStyle=P.surface;c.beginPath();c.arc(orbX,st.h/2,10,0,PI2);c.fill();
                 // Crater shadows -- const black, alpha via globalAlpha
                 c.fillStyle='#000000';c.globalAlpha=(t-.5)*2*.15;
                 c.beginPath();c.arc(orbX-3,st.h/2-2,3,0,PI2);c.fill();
@@ -2123,16 +2340,20 @@ export function DayNightToggle({seed=42}={}) {
                 c.globalAlpha=1;
             }
 
-            lbl(c,st.toggled?'NIGHT':'DAY',st.w/2,st.h+14,st.toggled?'#9999b8':'#fbbf24');
+            lbl(c,st.toggled?'NIGHT':'DAY',st.w/2,st.h+14,st.toggled?P.dim:P.accent);
             if(st.focused)fr(c,st.w,st.h,st.h/2);
         },
     };
 }
 
 /** 13. Reaction Picker -- 5 emoji-style circles that inflate on hover region. */
-export function ReactionPicker() {
+export function ReactionPicker(o = {}) {
     let sizes=new Float32Array(5), selected=-1;
-    const emojis=['\u{1F610}','\u{1F642}','\u{1F60A}','\u{1F604}','\u{1F929}'],colors=['#9999b8','#fbbf24','#fb923c','#f472b6','#ff6b6b'];
+    const emojis=['\u{1F610}','\u{1F642}','\u{1F60A}','\u{1F604}','\u{1F929}'];
+    // `colors` is the 5-reaction palette; `theme` seeds it. Normalised to 5.
+    const base = o.colors ? o.colors
+        : (o.theme ? [o.theme.light,o.theme.mid,o.theme.dark,o.theme.light,o.theme.mid] : ['#9999b8','#fbbf24','#fb923c','#f472b6','#ff6b6b']);
+    const colors = base.length>=5 ? base : Array.from({length:5},(_,i)=>base[i%base.length]);
     const colors30=colors.map((col)=>col+'30');                  // active fill (was `${color}30`)
     const REACT_LABELS=['MEH','OK','NICE','GREAT','LOVE'];        // was a per-frame array literal
     const FONTS=[]; for(let i=0;i<=48;i++)FONTS[i]=i+'px sans-serif'; // emoji font by rounded size
@@ -2169,7 +2390,9 @@ export function ReactionPicker() {
 }
 
 /** 14. Notification Bell -- Bell icon with bounce and count badge. */
-export function NotificationBell() {
+export function NotificationBell(o = {}) {
+    const P = resolveTheme(o, { accent: '#fbbf24', accent2: '#ff6b6b' });
+    const TXT = pickText(o, 'NOTIFY');
     let count=0, bellAngle=0, bellVel=0, badgeScale=0;
     let badgeStr='0'; // rebuilt only on click (count change), not per frame
     return {
@@ -2183,23 +2406,23 @@ export function NotificationBell() {
 
             // Bell body
             c.save();c.translate(cx,cy-4);c.rotate(bellAngle*0.3);
-            c.fillStyle='#fbbf24';
+            c.fillStyle=P.accent;
             c.beginPath();c.moveTo(-10,0);c.quadraticCurveTo(-12,-14,0,-18);c.quadraticCurveTo(12,-14,10,0);c.lineTo(-10,0);c.fill();
             // Clapper
-            c.fillStyle='#fbbf24';c.beginPath();c.arc(0,3,3,0,PI2);c.fill();
+            c.fillStyle=P.accent;c.beginPath();c.arc(0,3,3,0,PI2);c.fill();
             c.restore();
 
             // Badge
             if(count>0){
                 const bx=cx+10,by=cy-16;
                 c.save();c.translate(bx,by);c.scale(badgeScale,badgeScale);
-                c.fillStyle='#ff6b6b';c.beginPath();c.arc(0,0,8,0,PI2);c.fill();
+                c.fillStyle=P.accent2;c.beginPath();c.arc(0,0,8,0,PI2);c.fill();
                 c.fillStyle='#fff';c.font="700 8px 'JetBrains Mono',monospace";c.textAlign='center';c.textBaseline='middle';
                 c.fillText(badgeStr,0,0);
                 c.restore();
             }
 
-            lbl(c,'NOTIFY',cx,st.h+10);
+            lbl(c,TXT,cx,st.h+10);
             if(st.focused)fr(c,st.w,st.h,4);
         },
     };
@@ -2211,8 +2434,10 @@ export function NotificationBell() {
 // ===========================================================
 
 /** 15. Typewriter Field -- Characters appear one by one with cursor blink. */
-export function TypewriterField() {
-    const text='Hello World';
+export function TypewriterField(o = {}) {
+    const P = resolveTheme(o, { accent: '#6ee7b6', dim2: '#8888aa' });
+    const FONT = pickFont(o, "500 13px 'JetBrains Mono',monospace");
+    const text=pickText(o, 'Hello World');
     let charIdx=0, timer=0, cursorBlink=0, typing=false;
     let display='', dispW=0, lastIdx=-1; // substring rebuilt only when a char lands
     return {
@@ -2224,24 +2449,26 @@ export function TypewriterField() {
             c.fillStyle='rgba(255,255,255,.04)';rr(c,0,0,st.w,st.h,6);c.fill();
             c.strokeStyle='rgba(255,255,255,.06)';c.lineWidth=1;rr(c,0,0,st.w,st.h,6);c.stroke();
 
-            c.fillStyle='#6ee7b6';c.font="500 13px 'JetBrains Mono',monospace";c.textAlign='left';c.textBaseline='middle';
+            c.fillStyle=P.accent;c.font=FONT;c.textAlign='left';c.textBaseline='middle';
             // Rebuild the visible substring + its width only when a char is added.
             if(charIdx!==lastIdx){lastIdx=charIdx;display=text.substring(0,charIdx);dispW=c.measureText(display).width;}
             c.fillText(display,8,st.h/2);
 
             // Cursor
             if(cursorBlink<1){
-                c.fillStyle='#6ee7b6';c.fillRect(9+dispW,st.h/2-8,1.5,16);
+                c.fillStyle=P.accent;c.fillRect(9+dispW,st.h/2-8,1.5,16);
             }
 
-            lbl(c,typing?'TYPING...':'TOGGLE TO TYPE',st.w/2,st.h+10,typing?'#6ee7b6':'#8888aa');
+            lbl(c,typing?'TYPING...':'TOGGLE TO TYPE',st.w/2,st.h+10,typing?P.accent:P.dim2);
             if(st.focused)fr(c,st.w,st.h,6);
         },
     };
 }
 
 /** 16. Sound Wave Button -- Oscillating waveform on press, static on idle. */
-export function SoundWaveBtn() {
+export function SoundWaveBtn(o = {}) {
+    const P = resolveTheme(o, { accent: '#f472b6', dim: '#9999b8' });
+    const FONT = pickFont(o, "600 11px 'Space Grotesk',sans-serif");
     let intensity=0, phase=0;
     return {
         onClick(){intensity=1},
@@ -2253,7 +2480,7 @@ export function SoundWaveBtn() {
 
             // Waveform
             const cy=st.h/2, amp=10*intensity;
-            c.strokeStyle=intensity>.1?'#f472b6':'rgba(255,255,255,.08)';c.lineWidth=2;
+            c.strokeStyle=intensity>.1?P.accent:'rgba(255,255,255,.08)';c.lineWidth=2;
             c.beginPath();
             for(let x=0;x<=st.w;x++){
                 const freq=x*0.1;
@@ -2268,7 +2495,7 @@ export function SoundWaveBtn() {
                 c.beginPath();c.moveTo(10,cy);c.lineTo(st.w-10,cy);c.stroke();
             }
 
-            c.fillStyle=intensity>.1?'#f472b6':'#9999b8';c.font="600 11px 'Space Grotesk',sans-serif";c.textAlign='center';c.textBaseline='middle';
+            c.fillStyle=intensity>.1?P.accent:P.dim;c.font=FONT;c.textAlign='center';c.textBaseline='middle';
             c.fillText(intensity>.1?'\u25CF  REC':'RECORD',st.w/2,st.h/2);
             if(st.focused)fr(c,st.w,st.h,10);
         },
@@ -2276,7 +2503,8 @@ export function SoundWaveBtn() {
 }
 
 /** 17. Upload Progress -- File icon fills from bottom as slider increases. */
-export function UploadProgress() {
+export function UploadProgress(o = {}) {
+    const P = resolveTheme(o, { accent: '#6ee7b6', accent2: '#38bdf8', dim: '#9999b8' });
     let displayVal=0;
     return {
         tick(c,dt,now,st) {
@@ -2292,8 +2520,8 @@ export function UploadProgress() {
 
             // Fill
             const fillH=fh*displayVal;
-            const col=displayVal>=1?'#6ee7b6':'#38bdf8';
-            c.fillStyle=displayVal>=1?'#6ee7b630':'#38bdf830'; // was `${col}30`
+            const col=displayVal>=1?P.accent:P.accent2;
+            c.fillStyle=col+'30'; // was `${col}30`
             c.save();c.beginPath();c.rect(fx+1,fy+fh-fillH,fw-1,fillH);c.clip();
             c.beginPath();c.moveTo(fx,fy);c.lineTo(fx+fw-fold,fy);c.lineTo(fx+fw,fy+fold);c.lineTo(fx+fw,fy+fh);c.lineTo(fx,fy+fh);c.closePath();c.fill();
             c.restore();
@@ -2308,7 +2536,7 @@ export function UploadProgress() {
             }
             c.lineCap='butt';
 
-            lbl(c,displayVal>=.99?'DONE':PCT[Math.round(displayVal*100)],cx,st.h+10,displayVal>=.99?'#6ee7b6':'#9999b8');
+            lbl(c,displayVal>=.99?'DONE':PCT[Math.round(displayVal*100)],cx,st.h+10,displayVal>=.99?P.accent:P.dim);
             if(st.focused)fr(c,st.w,st.h,4);
         },
     };
@@ -2320,7 +2548,11 @@ export function UploadProgress() {
 // ===========================================================
 
 /** 18. Scratch Reveal -- Drag to erase a mask and reveal the prize beneath. */
-export function ScratchReveal({seed=42}={}) {
+export function ScratchReveal(o = {}) {
+    const {seed=42}=o;
+    const P = resolveTheme(o, { accent: '#6ee7b6', dim: '#9999b8' });
+    const prizeBg = (o.theme || o.colors) ? rgbaOf(P.accent, .08) : 'rgba(110,231,182,.08)';
+    const FONT = pickFont(o, "700 14px 'JetBrains Mono',monospace");
     const rng=new Random(seed);
     // Fixed scratch pool (holes persist). Once all SCR slots are used the scratch
     // stops adding holes -- existing marks are never overwritten, so earlier
@@ -2345,10 +2577,10 @@ export function ScratchReveal({seed=42}={}) {
         tick(c,dt,now,st) {
             lastW=st.w;
             // Prize background
-            c.fillStyle='rgba(110,231,182,.08)';rr(c,0,0,st.w,st.h,8);c.fill();
+            c.fillStyle=prizeBg;rr(c,0,0,st.w,st.h,8);c.fill();
 
             // Prize text -- const color, alpha via globalAlpha
-            c.fillStyle='#6ee7b6';c.globalAlpha=.1+revealed*.6;c.font="700 14px 'JetBrains Mono',monospace";c.textAlign='center';c.textBaseline='middle';
+            c.fillStyle=P.accent;c.globalAlpha=.1+revealed*.6;c.font=FONT;c.textAlign='center';c.textBaseline='middle';
             c.fillText(revealed>.6?'\u{1F389} WINNER!':'? ? ?',st.w/2,st.h/2);
             c.globalAlpha=1;
 
@@ -2371,14 +2603,16 @@ export function ScratchReveal({seed=42}={}) {
                 c.fillRect(shimX-2,0,4,st.h);
             }
 
-            lbl(c,revealed>.6?'REVEALED!':'DRAG TO SCRATCH',st.w/2,st.h+10,revealed>.6?'#6ee7b6':'#9999b8');
+            lbl(c,revealed>.6?'REVEALED!':'DRAG TO SCRATCH',st.w/2,st.h+10,revealed>.6?P.accent:P.dim);
             if(st.focused)fr(c,st.w,st.h,8);
         },
     };
 }
 
 /** 19. Timer Countdown -- Circular countdown timer. Toggle starts/stops. */
-export function TimerCountdown() {
+export function TimerCountdown(o = {}) {
+    const P = resolveTheme(o, { accent: '#6ee7b6', accent2: '#fbbf24', accent3: '#ff6b6b', dim: '#e2e2f0', dim2: '#8888aa' });
+    const FONT = pickFont(o, "700 16px 'JetBrains Mono',monospace");
     let timeLeft=10, running=false, flashAlpha=0;
     let timeStr='10.0s', lastTenths=-1; // rebuilt at ~10 Hz, not per frame
     return {
@@ -2398,24 +2632,25 @@ export function TimerCountdown() {
 
             // Progress arc
             const progress=timeLeft/10;
-            const col=timeLeft>3?'#6ee7b6':timeLeft>1?'#fbbf24':'#ff6b6b';
+            const col=timeLeft>3?P.accent:timeLeft>1?P.accent2:P.accent3;
             c.strokeStyle=col;c.lineWidth=4;
             c.beginPath();c.arc(cx,cy,R,-Math.PI/2,-Math.PI/2+progress*PI2,false);c.stroke();
 
             // Time text
             const tenths=Math.round(timeLeft*10);
             if(tenths!==lastTenths){lastTenths=tenths;timeStr=(tenths/10).toFixed(1)+'s';}
-            c.fillStyle='#e2e2f0';c.font="700 16px 'JetBrains Mono',monospace";c.textAlign='center';c.textBaseline='middle';
+            c.fillStyle=P.dim;c.font=FONT;c.textAlign='center';c.textBaseline='middle';
             c.fillText(timeStr,cx,cy);
 
-            lbl(c,running?(timeLeft>0?'RUNNING':'TIME UP!'):'TOGGLE TO START',cx,st.h+10,running?col:'#8888aa');
+            lbl(c,running?(timeLeft>0?'RUNNING':'TIME UP!'):'TOGGLE TO START',cx,st.h+10,running?col:P.dim2);
             if(st.focused)fr(c,st.w,st.h,R);
         },
     };
 }
 
 /** 20. Pull Refresh -- Drag down to charge, release to spin. */
-export function PullRefresh() {
+export function PullRefresh(o = {}) {
+    const P = resolveTheme(o, { accent: '#6ee7b6', accent2: '#38bdf8', dim: '#9999b8' });
     let pullAmt=0, spinning=false, spinAngle=0, spinTimer=0;
     return {
         onDrag(val) { if(!spinning) pullAmt=val; },
@@ -2435,25 +2670,25 @@ export function PullRefresh() {
                 // Spinner arcs
                 for(let i=0;i<3;i++){
                     const a=spinAngle+i*PI2/3;
-                    c.strokeStyle='#38bdf8';c.globalAlpha=.3+i*.2;c.lineWidth=3;
+                    c.strokeStyle=P.accent2;c.globalAlpha=.3+i*.2;c.lineWidth=3;
                     c.beginPath();c.arc(cx,cy,16,a,a+.8);c.stroke();
                 }
                 c.globalAlpha=1;
-                lbl(c,'LOADING...',cx,st.h+10,'#38bdf8');
+                lbl(c,'LOADING...',cx,st.h+10,P.accent2);
             } else {
                 // Arrow that stretches with pull
                 const stretch=pullAmt*14;
-                c.strokeStyle=pullAmt>.6?'#6ee7b6':'rgba(255,255,255,.15)';c.lineWidth=2;c.lineCap='round';
+                c.strokeStyle=pullAmt>.6?P.accent:'rgba(255,255,255,.15)';c.lineWidth=2;c.lineCap='round';
                 c.beginPath();c.moveTo(cx,cy-8-stretch);c.lineTo(cx,cy+4);c.stroke();
                 c.beginPath();c.moveTo(cx-5,cy+0);c.lineTo(cx,cy+4);c.lineTo(cx+5,cy+0);c.stroke();
                 c.lineCap='butt';
 
                 // Fill ring
                 if(pullAmt>0){
-                    c.strokeStyle=pullAmt>.6?'#6ee7b6':'rgba(255,255,255,.1)';c.lineWidth=2;
+                    c.strokeStyle=pullAmt>.6?P.accent:'rgba(255,255,255,.1)';c.lineWidth=2;
                     c.beginPath();c.arc(cx,cy,20,-Math.PI/2,-Math.PI/2+pullAmt*PI2);c.stroke();
                 }
-                lbl(c,pullAmt>.6?'RELEASE!':'DRAG SLIDER',cx,st.h+10,pullAmt>.6?'#6ee7b6':'#9999b8');
+                lbl(c,pullAmt>.6?'RELEASE!':'DRAG SLIDER',cx,st.h+10,pullAmt>.6?P.accent:P.dim);
             }
             if(st.focused)fr(c,st.w,st.h,24);
         },
@@ -2619,60 +2854,60 @@ export const RECIPES = Object.assign(Object.create(null), {
  *
  *   type       'toggle' | 'button' | 'slider' -- the native element it mounts on
  *   family     display grouping (Toggles, Buttons, Sliders, Knobs, ...)
- *   themeable  accepts { colors, theme } (false for all until a later pass)
- *   motionSafe inherently-calm under prefers-reduced-motion (false for all)
+ *   themeable  accepts { colors, theme } (true for all as of U3b/1.4.0)
+ *   motionSafe inherently-calm under prefers-reduced-motion (false for all -- U5)
  */
 export const RECIPE_META = [
-    { id: 'swarmToggle', name: 'Swarm Toggle', type: 'toggle', family: 'Toggles', themeable: false, motionSafe: false },
-    { id: 'liquidToggle', name: 'Liquid Toggle', type: 'toggle', family: 'Toggles', themeable: false, motionSafe: false },
-    { id: 'neonPulseToggle', name: 'Neon Pulse Toggle', type: 'toggle', family: 'Toggles', themeable: false, motionSafe: false },
-    { id: 'magneticButton', name: 'Magnetic Button', type: 'button', family: 'Buttons', themeable: false, motionSafe: false },
-    { id: 'shatterButton', name: 'Shatter Button', type: 'button', family: 'Buttons', themeable: false, motionSafe: false },
-    { id: 'confettiButton', name: 'Confetti Button', type: 'button', family: 'Buttons', themeable: false, motionSafe: false },
-    { id: 'glitchButton', name: 'Glitch Button', type: 'button', family: 'Buttons', themeable: false, motionSafe: false },
-    { id: 'sparkSlider', name: 'Spark Slider', type: 'slider', family: 'Sliders', themeable: false, motionSafe: false },
-    { id: 'cosmicSlider', name: 'Cosmic Slider', type: 'slider', family: 'Sliders', themeable: false, motionSafe: false },
-    { id: 'laserSlider', name: 'Laser Slider', type: 'slider', family: 'Sliders', themeable: false, motionSafe: false },
-    { id: 'pendulumToggle', name: 'Pendulum Toggle', type: 'toggle', family: 'Toggles', themeable: false, motionSafe: false },
-    { id: 'circuitToggle', name: 'Circuit Toggle', type: 'toggle', family: 'Toggles', themeable: false, motionSafe: false },
-    { id: 'lightningToggle', name: 'Lightning Toggle', type: 'toggle', family: 'Toggles', themeable: false, motionSafe: false },
-    { id: 'dnaToggle', name: 'Dna Toggle', type: 'toggle', family: 'Toggles', themeable: false, motionSafe: false },
-    { id: 'heartbeatButton', name: 'Heartbeat Button', type: 'button', family: 'Buttons', themeable: false, motionSafe: false },
-    { id: 'breathingButton', name: 'Breathing Button', type: 'button', family: 'Buttons', themeable: false, motionSafe: false },
-    { id: 'inkSplashButton', name: 'Ink Splash Button', type: 'button', family: 'Buttons', themeable: false, motionSafe: false },
-    { id: 'pixelDissolveButton', name: 'Pixel Dissolve Button', type: 'button', family: 'Buttons', themeable: false, motionSafe: false },
-    { id: 'fireworkButton', name: 'Firework Button', type: 'button', family: 'Buttons', themeable: false, motionSafe: false },
-    { id: 'auroraSlider', name: 'Aurora Slider', type: 'slider', family: 'Sliders', themeable: false, motionSafe: false },
-    { id: 'waveSlider', name: 'Wave Slider', type: 'slider', family: 'Sliders', themeable: false, motionSafe: false },
-    { id: 'elasticBandSlider', name: 'Elastic Band Slider', type: 'slider', family: 'Sliders', themeable: false, motionSafe: false },
-    { id: 'gravitySlider', name: 'Gravity Slider', type: 'slider', family: 'Sliders', themeable: false, motionSafe: false },
-    { id: 'orbitLoader', name: 'Orbit Loader', type: 'toggle', family: 'Loaders', themeable: false, motionSafe: false },
-    { id: 'helixLoader', name: 'Helix Loader', type: 'toggle', family: 'Loaders', themeable: false, motionSafe: false },
-    { id: 'rippleCheck', name: 'Ripple Check', type: 'toggle', family: 'Checkboxes', themeable: false, motionSafe: false },
-    { id: 'morphCheck', name: 'Morph Check', type: 'toggle', family: 'Checkboxes', themeable: false, motionSafe: false },
-    { id: 'flameCounter', name: 'Flame Counter', type: 'slider', family: 'Counters', themeable: false, motionSafe: false },
-    { id: 'glitchCounter', name: 'Glitch Counter', type: 'slider', family: 'Counters', themeable: false, motionSafe: false },
-    { id: 'bubbleRating', name: 'Bubble Rating', type: 'slider', family: 'Rating', themeable: false, motionSafe: false },
-    { id: 'volumeKnob', name: 'Volume Knob', type: 'slider', family: 'Knobs', themeable: false, motionSafe: false },
-    { id: 'compassKnob', name: 'Compass Knob', type: 'slider', family: 'Knobs', themeable: false, motionSafe: false },
-    { id: 'ringProgress', name: 'Ring Progress', type: 'slider', family: 'Progress', themeable: false, motionSafe: false },
-    { id: 'batteryGauge', name: 'Battery Gauge', type: 'slider', family: 'Progress', themeable: false, motionSafe: false },
-    { id: 'signalMeter', name: 'Signal Meter', type: 'slider', family: 'Progress', themeable: false, motionSafe: false },
-    { id: 'pillTabs', name: 'Pill Tabs', type: 'button', family: 'Controls', themeable: false, motionSafe: false },
-    { id: 'stepper', name: 'Stepper', type: 'button', family: 'Controls', themeable: false, motionSafe: false },
-    { id: 'radioOrbit', name: 'Radio Orbit', type: 'slider', family: 'Controls', themeable: false, motionSafe: false },
-    { id: 'passwordStrength', name: 'Password Strength', type: 'slider', family: 'Indicators', themeable: false, motionSafe: false },
-    { id: 'waterLevel', name: 'Water Level', type: 'slider', family: 'Indicators', themeable: false, motionSafe: false },
-    { id: 'heatMap', name: 'Heat Map', type: 'slider', family: 'Indicators', themeable: false, motionSafe: false },
-    { id: 'dayNightToggle', name: 'Day Night Toggle', type: 'toggle', family: 'Mood', themeable: false, motionSafe: false },
-    { id: 'reactionPicker', name: 'Reaction Picker', type: 'button', family: 'Mood', themeable: false, motionSafe: false },
-    { id: 'notificationBell', name: 'Notification Bell', type: 'button', family: 'Mood', themeable: false, motionSafe: false },
-    { id: 'typewriterField', name: 'Typewriter Field', type: 'toggle', family: 'Feedback', themeable: false, motionSafe: false },
-    { id: 'soundWaveBtn', name: 'Sound Wave Btn', type: 'button', family: 'Feedback', themeable: false, motionSafe: false },
-    { id: 'uploadProgress', name: 'Upload Progress', type: 'slider', family: 'Feedback', themeable: false, motionSafe: false },
-    { id: 'scratchReveal', name: 'Scratch Reveal', type: 'slider', family: 'Fun', themeable: false, motionSafe: false },
-    { id: 'timerCountdown', name: 'Timer Countdown', type: 'toggle', family: 'Fun', themeable: false, motionSafe: false },
-    { id: 'pullRefresh', name: 'Pull Refresh', type: 'slider', family: 'Fun', themeable: false, motionSafe: false },
+    { id: 'swarmToggle', name: 'Swarm Toggle', type: 'toggle', family: 'Toggles', themeable: true, motionSafe: false },
+    { id: 'liquidToggle', name: 'Liquid Toggle', type: 'toggle', family: 'Toggles', themeable: true, motionSafe: false },
+    { id: 'neonPulseToggle', name: 'Neon Pulse Toggle', type: 'toggle', family: 'Toggles', themeable: true, motionSafe: false },
+    { id: 'magneticButton', name: 'Magnetic Button', type: 'button', family: 'Buttons', themeable: true, motionSafe: false },
+    { id: 'shatterButton', name: 'Shatter Button', type: 'button', family: 'Buttons', themeable: true, motionSafe: false },
+    { id: 'confettiButton', name: 'Confetti Button', type: 'button', family: 'Buttons', themeable: true, motionSafe: false },
+    { id: 'glitchButton', name: 'Glitch Button', type: 'button', family: 'Buttons', themeable: true, motionSafe: false },
+    { id: 'sparkSlider', name: 'Spark Slider', type: 'slider', family: 'Sliders', themeable: true, motionSafe: false },
+    { id: 'cosmicSlider', name: 'Cosmic Slider', type: 'slider', family: 'Sliders', themeable: true, motionSafe: false },
+    { id: 'laserSlider', name: 'Laser Slider', type: 'slider', family: 'Sliders', themeable: true, motionSafe: false },
+    { id: 'pendulumToggle', name: 'Pendulum Toggle', type: 'toggle', family: 'Toggles', themeable: true, motionSafe: false },
+    { id: 'circuitToggle', name: 'Circuit Toggle', type: 'toggle', family: 'Toggles', themeable: true, motionSafe: false },
+    { id: 'lightningToggle', name: 'Lightning Toggle', type: 'toggle', family: 'Toggles', themeable: true, motionSafe: false },
+    { id: 'dnaToggle', name: 'Dna Toggle', type: 'toggle', family: 'Toggles', themeable: true, motionSafe: false },
+    { id: 'heartbeatButton', name: 'Heartbeat Button', type: 'button', family: 'Buttons', themeable: true, motionSafe: false },
+    { id: 'breathingButton', name: 'Breathing Button', type: 'button', family: 'Buttons', themeable: true, motionSafe: false },
+    { id: 'inkSplashButton', name: 'Ink Splash Button', type: 'button', family: 'Buttons', themeable: true, motionSafe: false },
+    { id: 'pixelDissolveButton', name: 'Pixel Dissolve Button', type: 'button', family: 'Buttons', themeable: true, motionSafe: false },
+    { id: 'fireworkButton', name: 'Firework Button', type: 'button', family: 'Buttons', themeable: true, motionSafe: false },
+    { id: 'auroraSlider', name: 'Aurora Slider', type: 'slider', family: 'Sliders', themeable: true, motionSafe: false },
+    { id: 'waveSlider', name: 'Wave Slider', type: 'slider', family: 'Sliders', themeable: true, motionSafe: false },
+    { id: 'elasticBandSlider', name: 'Elastic Band Slider', type: 'slider', family: 'Sliders', themeable: true, motionSafe: false },
+    { id: 'gravitySlider', name: 'Gravity Slider', type: 'slider', family: 'Sliders', themeable: true, motionSafe: false },
+    { id: 'orbitLoader', name: 'Orbit Loader', type: 'toggle', family: 'Loaders', themeable: true, motionSafe: false },
+    { id: 'helixLoader', name: 'Helix Loader', type: 'toggle', family: 'Loaders', themeable: true, motionSafe: false },
+    { id: 'rippleCheck', name: 'Ripple Check', type: 'toggle', family: 'Checkboxes', themeable: true, motionSafe: false },
+    { id: 'morphCheck', name: 'Morph Check', type: 'toggle', family: 'Checkboxes', themeable: true, motionSafe: false },
+    { id: 'flameCounter', name: 'Flame Counter', type: 'slider', family: 'Counters', themeable: true, motionSafe: false },
+    { id: 'glitchCounter', name: 'Glitch Counter', type: 'slider', family: 'Counters', themeable: true, motionSafe: false },
+    { id: 'bubbleRating', name: 'Bubble Rating', type: 'slider', family: 'Rating', themeable: true, motionSafe: false },
+    { id: 'volumeKnob', name: 'Volume Knob', type: 'slider', family: 'Knobs', themeable: true, motionSafe: false },
+    { id: 'compassKnob', name: 'Compass Knob', type: 'slider', family: 'Knobs', themeable: true, motionSafe: false },
+    { id: 'ringProgress', name: 'Ring Progress', type: 'slider', family: 'Progress', themeable: true, motionSafe: false },
+    { id: 'batteryGauge', name: 'Battery Gauge', type: 'slider', family: 'Progress', themeable: true, motionSafe: false },
+    { id: 'signalMeter', name: 'Signal Meter', type: 'slider', family: 'Progress', themeable: true, motionSafe: false },
+    { id: 'pillTabs', name: 'Pill Tabs', type: 'button', family: 'Controls', themeable: true, motionSafe: false },
+    { id: 'stepper', name: 'Stepper', type: 'button', family: 'Controls', themeable: true, motionSafe: false },
+    { id: 'radioOrbit', name: 'Radio Orbit', type: 'slider', family: 'Controls', themeable: true, motionSafe: false },
+    { id: 'passwordStrength', name: 'Password Strength', type: 'slider', family: 'Indicators', themeable: true, motionSafe: false },
+    { id: 'waterLevel', name: 'Water Level', type: 'slider', family: 'Indicators', themeable: true, motionSafe: false },
+    { id: 'heatMap', name: 'Heat Map', type: 'slider', family: 'Indicators', themeable: true, motionSafe: false },
+    { id: 'dayNightToggle', name: 'Day Night Toggle', type: 'toggle', family: 'Mood', themeable: true, motionSafe: false },
+    { id: 'reactionPicker', name: 'Reaction Picker', type: 'button', family: 'Mood', themeable: true, motionSafe: false },
+    { id: 'notificationBell', name: 'Notification Bell', type: 'button', family: 'Mood', themeable: true, motionSafe: false },
+    { id: 'typewriterField', name: 'Typewriter Field', type: 'toggle', family: 'Feedback', themeable: true, motionSafe: false },
+    { id: 'soundWaveBtn', name: 'Sound Wave Btn', type: 'button', family: 'Feedback', themeable: true, motionSafe: false },
+    { id: 'uploadProgress', name: 'Upload Progress', type: 'slider', family: 'Feedback', themeable: true, motionSafe: false },
+    { id: 'scratchReveal', name: 'Scratch Reveal', type: 'slider', family: 'Fun', themeable: true, motionSafe: false },
+    { id: 'timerCountdown', name: 'Timer Countdown', type: 'toggle', family: 'Fun', themeable: true, motionSafe: false },
+    { id: 'pullRefresh', name: 'Pull Refresh', type: 'slider', family: 'Fun', themeable: true, motionSafe: false },
 ];
 
 /** Names of every built-in recipe (the keys of RECIPES at load time). */

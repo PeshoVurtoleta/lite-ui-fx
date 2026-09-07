@@ -59,6 +59,19 @@ export interface MountOptions {
     checked?: boolean;
     /** Disables the native element and sets state.disabled for recipes. */
     disabled?: boolean;
+    // -- Reserved recipe theming options (decisions/0002). Validated fail-closed,
+    //    then forwarded to the recipe factory. All optional; omitting them keeps
+    //    the recipe's shipped look byte-for-byte.
+    /** Seed for a recipe's deterministic RNG. */
+    seed?: number;
+    /** Positional palette override; wins over `theme`. */
+    colors?: string[];
+    /** Named theme roles: light -> accent, mid -> dim/muted, dark -> surface. */
+    theme?: { light: string; mid: string; dark: string };
+    /** Visible canvas label; falls back to `label`, then the recipe default. */
+    text?: string;
+    /** Canvas font string; falls back to the recipe's historical font. */
+    font?: string;
 }
 
 export interface UIFXInstance {

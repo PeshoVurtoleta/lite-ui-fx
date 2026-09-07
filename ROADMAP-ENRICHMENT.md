@@ -18,6 +18,16 @@ agent-readable (llms.txt, META) -- is this package's to take.
 **Cross-cutting rules for every enrichment session.**
 - Every new recipe born under t3 (zero per-frame allocation; the U3 patterns:
   const color + globalAlpha, color/label LUTs, fixed pools, init gradients).
+- Build particle/loader bodies on the suite engines, not hand-rolled loops:
+  lite-particles is the default -- headless, host-driven `.update(dt seconds)` +
+  `.draw(ctx, renderCallback)`, 0 B/call, and its ONLY dep is lite-random (already
+  a lite-ui-fx dep, so near-zero added weight). Procedural motion/texture from
+  lite-noise (simplex) and lite-cellular (Worley), both zero-GC pure queries.
+  lite-vfx's VFXManager only where a declarative preset manager earns its keep (it
+  pulls lite-color, and its "recipe" is distinct from a ui-fx recipe -- one
+  composes inside the other). Recipe deps live behind ./recipes; the controller
+  stays dependency-pure. Every engine is driven from the shared (or driven)
+  ticker -- confirm host-drivability at brief time; no engine may own a RAF.
 - Palettes + APCA-checked contrast from lite-hueforge; themed via the U-06
   convention; listed in RECIPE_META; mounted in the demo from META.
 - Text-over-DOM recipes additionally pass the U6 forced-reflow gate
@@ -46,7 +56,8 @@ SCOPE
     (reuse U4 liquid/ring/battery), rating, switch, slider, steps, pin-input
     (per-digit pop), file-upload (progress burst), toast (entrance particles),
     command-palette (glow frame), color-picker (canvas wheel -- the one primitive
-    whose visual IS a canvas job).
+    whose visual IS a canvas job). The pop / burst / entrance-particle bits ride
+    lite-particles.
 
 DONE WHEN
   A lite-headless switch/slider/rating/progress skinned by UIFX keeps the
@@ -66,6 +77,8 @@ SCOPE
   - cursor/pointer decorations: magnetic pull, trail, proximity glow on cards
     and buttons.
   - card decorations: border-beam, tilt-shine, focus-halo (extend the U4 family).
+  - engines: shimmer / spotlight motion from lite-noise; trail + proximity-glow
+    particles from lite-particles.
 
 HOT PATH
   These sit over live DOM text -- the one place this package can force layout.
@@ -84,7 +97,8 @@ PURPOSE
 
 SCOPE
   - Loader family growth: 6 new budget-aware loaders (consume state.budget from
-    U5), each themed + gated.
+    U5), each themed + gated; particle loaders on lite-particles, organic / flow
+    loaders on lite-noise / lite-cellular (host-driven, no engine-owned RAF).
   - README "family map" section routing the wants this package does NOT serve --
     fullscreen atmospheres -> lite-ambient-fx, reveal effects -> lite-scratch-fx
     -- so the suite answers Aceternity together, one package does not overreach.

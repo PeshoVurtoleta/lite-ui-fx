@@ -101,9 +101,20 @@ function colorDistinct(factory, driver) {
     return S.size;
 }
 
+// A themed mount (U3b): the recipe resolves theme/colors/text/font in init and
+// the hot tick must STILL allocate nothing -- same structural budget under a
+// non-default palette. Proves palette resolution stayed cold. The heavy 150k
+// gcGate (pool/transient allocation) is unaffected by colour choice, so the
+// themed variant runs only the cheap structural gates (gradient + colour count).
+const THEME = {
+    theme: { light: '#ff3366', mid: '#33aaff', dark: '#101018' },
+    text: 'Xy', font: "600 12px 'JetBrains Mono',monospace",
+};
+
 const rows = [];
 for (const m of RECIPE_META) {
     const factory = RECIPES[m.id];
+    const themedFactory = () => RECIPES[m.id](THEME);
     const driver = makeChurn(m.type);
     const { summary } = await gcGate(factory, { hot: HOT, driver });
     rows.push({
@@ -111,6 +122,8 @@ for (const m of RECIPE_META) {
         major: summary.gc.major, minor: summary.gc.minor,
         grad: gradientInTick(factory, driver),
         cdist: colorDistinct(factory, driver),
+        tgrad: gradientInTick(themedFactory, driver),
+        tcdist: colorDistinct(themedFactory, driver),
     });
 }
 

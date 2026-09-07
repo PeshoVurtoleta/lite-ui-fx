@@ -9,7 +9,7 @@
 // so { checked } / { value } are asserted strictly BEFORE frame 1.
 
 import assert from 'node:assert/strict';
-import { mountUIFX, UIType, makeContainer, EventStub, raf } from './harness.mjs';
+import { mountUIFX, UIType, makeContainer, EventStub, raf, Ctx2DStub, RECIPES } from './harness.mjs';
 
 function keydown(el, code) {
     el.dispatchEvent(Object.assign(new EventStub('keydown'), { code }));
@@ -80,6 +80,38 @@ export async function runT2() {
         assert.equal(inst.el.value, '30', 'A9: {value:0.3} -> el.value "30" pre-frame');
         assert.equal(inst.state.val, 0.3, 'A9: {value:0.3} -> state.val 0.3 pre-frame');
         inst.destroy();
+    }
+
+    // ---- label-in-name (U-06/U3b): the visible canvas text EQUALS the accessible
+    // name. mountUIFX sets aria-label from `label`; the recipe resolves its canvas
+    // text as text ?? label ?? default, so a mount that sets only `label` paints
+    // the exact string a screen reader announces (WCAG 2.5.3), and `text` wins. ----
+    {
+        // Paint one frame of a text-bearing recipe and return the string it draws.
+        const drawn = (opts) => {
+            const ctx = new Ctx2DStub();
+            const recipe = RECIPES.magneticButton(opts || {});
+            const st = { hover: true, active: false, focused: false, toggled: false, val: 0.5, w: 160, h: 48, padding: 40, dpr: 1 };
+            if (recipe.init) recipe.init(ctx, st.w, st.h, st.padding);
+            ctx.record(true);
+            recipe.tick(ctx, 0.016, 16, st, { x: 80, y: 24, vx: 0, vy: 0 });
+            ctx.record(false);
+            for (const e of ctx._log) if (e.indexOf('fillText=') === 0) return e.slice(9);
+            return null;
+        };
+        assert.equal(drawn(), 'MAGNETIC', 'label-in-name: a bare mount paints the recipe default');
+        assert.equal(drawn({ label: 'Save' }), 'Save', 'label-in-name: `label` drives the visible canvas text');
+        assert.equal(drawn({ text: 'Go', label: 'Save' }), 'Go', 'label-in-name: `text` overrides `label`');
+
+        // The controller wires `label` into the native accessible name: a <button>
+        // takes it from textContent (it is opacity:0 under the canvas), a toggle /
+        // slider from aria-label. Either way the announced name IS the painted string.
+        const btn = mountUIFX(container, UIType.BUTTON, RECIPES.magneticButton, { label: 'Save' });
+        assert.equal(btn.el.textContent, 'Save', 'label-in-name: button accessible name (textContent) == the label that drives the canvas text');
+        btn.destroy();
+        const tog = mountUIFX(container, UIType.TOGGLE, RECIPES.swarmToggle, { label: 'Save' });
+        assert.equal(tog.el.getAttribute('aria-label'), 'Save', 'label-in-name: toggle accessible name (aria-label) == the label that drives the canvas text');
+        tog.destroy();
     }
 
     assert.equal(raf.pending(), 0, 't2 raf pending returns to 0');

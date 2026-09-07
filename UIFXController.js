@@ -22,7 +22,7 @@ import { Ticker } from '@zakkster/lite-ticker';
 
 // Three-place version sync: this constant, package.json "version", and the
 // VERSION line in llms.txt must always match. /release keeps them locked.
-export const VERSION = '1.3.0';
+export const VERSION = '1.4.0';
 
 // ---------------------------------------------------------
 //  SHARED TICKER (ref-counted, one RAF for all UI components)
@@ -84,7 +84,7 @@ function releaseSliderStyle() {
 // ---------------------------------------------------------
 
 const KNOWN_HOOKS = ['init', 'tick', 'onHover', 'onLeave', 'onClick', 'onToggle', 'onDrag', 'destroy'];
-const KNOWN_OPTIONS = ['width', 'height', 'padding', 'label', 'value', 'checked', 'disabled'];
+const KNOWN_OPTIONS = ['width', 'height', 'padding', 'label', 'value', 'checked', 'disabled', 'seed', 'colors', 'theme', 'text', 'font'];
 
 // Levenshtein edit distance. Cold: only reached on the error path.
 function _editDistance(a, b) {
@@ -205,6 +205,33 @@ export function mountUIFX(container, type, recipeFactory, options = {}) {
     const height = options.height;
     const padding = options.padding === undefined ? 40 : options.padding;
     const label = options.label === undefined ? '' : options.label;
+
+    // Reserved theming options (decisions/0002): all optional, validated fail
+    // closed here, then forwarded to the recipe factory which resolves them in
+    // init. This is cold mount code -- closures/allocation are fine here.
+    const _theme = options.theme;
+    if (_theme !== undefined) {
+        if (_theme === null || typeof _theme !== 'object' ||
+            typeof _theme.light !== 'string' || typeof _theme.mid !== 'string' ||
+            typeof _theme.dark !== 'string' || Object.keys(_theme).length !== 3) {
+            throw new Error('mountUIFX: option "theme" must be { light, mid, dark } of color strings');
+        }
+    }
+    const _colors = options.colors;
+    if (_colors !== undefined &&
+        (!Array.isArray(_colors) || _colors.some((c) => typeof c !== 'string'))) {
+        throw new Error('mountUIFX: option "colors" must be an array of color strings');
+    }
+    if (options.text !== undefined && typeof options.text !== 'string') {
+        throw new Error('mountUIFX: option "text" must be a string');
+    }
+    if (options.font !== undefined && typeof options.font !== 'string') {
+        throw new Error('mountUIFX: option "font" must be a string');
+    }
+    if (options.seed !== undefined &&
+        (typeof options.seed !== 'number' || !Number.isFinite(options.seed))) {
+        throw new Error('mountUIFX: option "seed" must be a finite number');
+    }
 
     // 3. recipeFactory
     if (typeof recipeFactory !== 'function') {

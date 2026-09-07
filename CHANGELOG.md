@@ -5,6 +5,55 @@ All notable changes to `@zakkster/lite-ui-fx` are documented here.
 The format follows Keep a Changelog; this project adheres to Semantic
 Versioning.
 
+## [1.4.0] -- 2026-09-07
+
+The theming pass (U3b), completing U3's third finding (U-06). One option
+convention across all 50 recipes; `themeable` is true for the first time. Every
+default renders byte-for-byte as 1.3.0. Reduced motion (`motionSafe`) stays a
+later pass.
+
+### Fixed
+
+- U-06 (theming): all 50 recipes honour one reserved option set
+  `{ seed, colors, theme: { light, mid, dark }, text, font }`, resolved once in the
+  factory / `init`, never per frame. `theme` maps light/mid/dark onto each recipe's
+  accent/dim/surface roles; `colors` overrides positionally and wins over `theme`;
+  the array-palette recipes (Confetti, Firework, Aurora, RadioOrbit,
+  PasswordStrength, ReactionPicker) keep reading `colors` as their palette and are
+  seeded by `theme`. Hardcoded canvas labels (`'MAGNETIC'`, ...) became `text`,
+  resolved as `text ?? label ?? default`, so a mount that sets only the accessible
+  `label` drives the visible string (WCAG 2.5.3 label-in-name); fonts became the
+  `font` option. Every default is byte-identical to 1.3.0 (recording-context
+  draw-signature diff over all 50 recipes).
+
+### Added
+
+- `RecipeOptions` (UIFXRecipes.d.ts) plus the shared cold helpers `resolveTheme`,
+  `pickText`, `pickFont`, `rgbaOf`, `rgbTriplet`; `MountOptions` gains the five
+  reserved keys.
+- `test/theme.test.mjs`: 70 boundary tests (themeable flags, every recipe recolours
+  under a theme, colors-wins-over-theme, the legacy `colors`/`color` aliases, the
+  fail-closed validator matrix, label-in-name).
+- t3 torture gates each recipe under a THEMED mount as well as its default
+  (`t3-scan.mjs` adds `tgrad`/`tcdist`; `t3-frame-alloc.mjs` judges both), proving
+  palette resolution stayed cold; t2 gains a label-in-name assertion.
+- `tools/palettes.mjs` (not shipped): audits the shipped label colours for APCA
+  0.1.9 contrast and emits example theme triples via `@zakkster/lite-hueforge`
+  (a dev-only tool, never a runtime dependency). Recorded in
+  `decisions/0002-recipe-options.md`.
+
+### Changed
+
+- Controller: `KNOWN_OPTIONS` admits `seed` / `colors` / `theme` / `text` / `font`,
+  each validated fail closed -- a partial or extra-key `theme`, a non-array
+  `colors`, a non-string `text` / `font`, or a non-finite `seed` throws; an unknown
+  key still returns a did-you-mean.
+- `RECIPE_META.themeable` is `true` for all 50 recipes; `motionSafe` stays `false`.
+- The recording `Ctx2DStub` logs `fillText` / `strokeText` with their text argument.
+- `UIFX-RECIPE-GUIDE.md`: the per-frame performance rules retire the pre-U3
+  "`splice()` is fine for < 100 particles" advice (it contradicts the t3 gate) and
+  add a rule to resolve theming in the factory / `init`, never in `tick`.
+
 ## [1.3.0] -- 2026-09-07
 
 The recipe sweep (U3), first pass: zero per-frame allocation across all 50
