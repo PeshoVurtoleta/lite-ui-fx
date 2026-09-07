@@ -5,7 +5,50 @@ All notable changes to `@zakkster/lite-ui-fx` are documented here.
 The format follows Keep a Changelog; this project adheres to Semantic
 Versioning.
 
-## [1.2.0] -- unreleased
+## [1.3.0] -- 2026-09-07
+
+The recipe sweep (U3), first pass: zero per-frame allocation across all 50
+recipes (U-03) and geometry derived from state (U-05). The `zero-gc` keyword is
+true for the first time. Theming (U-06) and the blueprint-doc rewrite are a
+deferred follow-up; `themeable` / `motionSafe` stay `false`.
+
+### Fixed
+
+- U-03 (zero-GC): every built-in recipe now runs its per-frame body -- idle and
+  under interaction -- without allocating. Per-frame `rgba(...,${alpha})` colour
+  strings became a const colour + `globalAlpha`; recipes whose RGB varies with a
+  value (FlameCounter, HeatMap, DayNightToggle) use a precomputed colour LUT;
+  particle `push`/`splice` pools became fixed preallocated pools with a live
+  flag; per-frame gradients moved to `init` (VolumeKnob / RingProgress build
+  once; LaserSlider / AuroraSlider build a reference gradient in `init` and scale
+  it to the fill, AuroraSlider cycling a bounded set of phase gradients); value
+  labels read a precomputed `PCT` table or a change-detection cache instead of
+  building `${n}%` / `String(n)` / `.toFixed()` per frame; the GlitchButton
+  per-tick closure and the CompassKnob / ReactionPicker per-frame array literals
+  were hoisted; `setLineDash([4,3])` uses one shared module-level array.
+- U-05 (size-true): spawn and inset positions derive from `st.w` -- NeonPulse
+  ring origin (was `46`/`18`), SparkSlider and ScratchReveal spark spawn (was
+  `val * 200`), BubbleRating bubble gap (was `200 / 5`).
+
+### Added
+
+- `test/torture/t3-frame-alloc.mjs` (+ `t3-scan.mjs`): the U-03 gate. It runs in
+  a child process under `--max-semi-space-size=1` and gates each recipe on
+  `major === 0`, zero gradient constructions after `init`, and a bounded count of
+  distinct fill/stroke colour strings (a per-frame colour template mints
+  hundreds; a const palette or LUT a few dozen). Wired into `torture.mjs`.
+
+### Changed
+
+- Harness: the recording `Ctx2DStub` backs numeric context properties
+  (`globalAlpha`, `lineWidth`, ...) with a `Float64Array` so writing a
+  non-integer never boxes a HeapNumber -- the gate measures the recipe, not the
+  stub. `gcGate` gained a warmup phase and an optional zero-alloc churn driver.
+- `mountUIFX` forwards the validated options to the recipe factory, so a recipe
+  can read its own config (a no-arg or wrapped factory ignores the argument).
+  This is inert until the U-06 theming pass uses it.
+
+## [1.2.0] -- 2026-09-06
 
 Recipes ship as code (U-13). The three GitHub-only recipe volumes are
 consolidated into one `UIFXRecipes.js` at the package root, exposed as the

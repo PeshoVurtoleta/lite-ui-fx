@@ -22,12 +22,18 @@ const _CTX_METHODS = [
     'bezierCurveTo', 'quadraticCurveTo', 'closePath',
 ];
 
-const _CTX_PROPS = [
-    'fillStyle', 'strokeStyle', 'lineWidth', 'globalAlpha',
-    'globalCompositeOperation', 'font', 'textAlign', 'textBaseline',
-    'shadowBlur', 'shadowColor', 'lineCap', 'lineDashOffset', 'lineJoin',
-    'miterLimit',
-];
+// String-valued context props live on a plain object; numeric props are backed
+// by a Float64Array so writing a non-integer (globalAlpha 0.44, lineWidth 1.5)
+// never boxes a HeapNumber. A stub that allocated on a numeric write would
+// charge the recipe for the stub's OWN garbage under the t3 frame-alloc gate --
+// exactly the zero-alloc pattern (const color + globalAlpha) recipes adopt in U3.
+const _CTX_STR_PROPS = {
+    fillStyle: '#000', strokeStyle: '#000', globalCompositeOperation: 'source-over',
+    font: '', textAlign: '', textBaseline: '', shadowColor: '', lineCap: 'butt',
+    lineJoin: 'miter',
+};
+const _CTX_NUM_PROPS = { lineWidth: 1, globalAlpha: 1, shadowBlur: 0, lineDashOffset: 0, miterLimit: 10 };
+const _NUM_KEYS = Object.keys(_CTX_NUM_PROPS);
 
 // Shared, non-allocating return stubs. A per-call allocation here would show up
 // under the torture gc gate, so gradients/metrics are singletons.
@@ -39,12 +45,9 @@ class Ctx2DStub {
         // flat recording log; only written when _rec is true (structural tiers).
         this._log = [];
         this._rec = false;
-        this._p = {
-            fillStyle: '#000', strokeStyle: '#000', lineWidth: 1, globalAlpha: 1,
-            globalCompositeOperation: 'source-over', font: '', textAlign: '',
-            textBaseline: '', shadowBlur: 0, shadowColor: '', lineCap: 'butt',
-            lineDashOffset: 0, lineJoin: 'miter', miterLimit: 10,
-        };
+        this._strs = Object.assign({}, _CTX_STR_PROPS);
+        this._nums = new Float64Array(_NUM_KEYS.length);
+        for (let i = 0; i < _NUM_KEYS.length; i++) this._nums[i] = _CTX_NUM_PROPS[_NUM_KEYS[i]];
     }
     createLinearGradient() { if (this._rec) this._log.push('createLinearGradient'); return _gradStub; }
     createRadialGradient() { if (this._rec) this._log.push('createRadialGradient'); return _gradStub; }
@@ -57,10 +60,18 @@ class Ctx2DStub {
 for (const m of _CTX_METHODS) {
     Ctx2DStub.prototype[m] = function () { if (this._rec) this._log.push(m); };
 }
-for (const prop of _CTX_PROPS) {
+for (const prop of Object.keys(_CTX_STR_PROPS)) {
     Object.defineProperty(Ctx2DStub.prototype, prop, {
-        get() { return this._p[prop]; },
-        set(v) { this._p[prop] = v; if (this._rec) this._log.push(prop + '=' + v); },
+        get() { return this._strs[prop]; },
+        set(v) { this._strs[prop] = v; if (this._rec) this._log.push(prop + '=' + v); },
+    });
+}
+for (let _ni = 0; _ni < _NUM_KEYS.length; _ni++) {
+    const prop = _NUM_KEYS[_ni];
+    const idx = _ni;
+    Object.defineProperty(Ctx2DStub.prototype, prop, {
+        get() { return this._nums[idx]; },
+        set(v) { this._nums[idx] = v; if (this._rec) this._log.push(prop + '=' + v); },
     });
 }
 

@@ -81,7 +81,7 @@ async function settle(ms = 60) { await new Promise((r) => setTimeout(r, ms)); }
 //  in the loop body so the gate measures the recipe, not the scaffold.
 // ---------------------------------------------------------------------------
 
-function makeFrame(recipeFactory) {
+function makeFrame(recipeFactory, driver) {
     const ctx = new Ctx2DStub();
     const recipe = recipeFactory();
     const state = {
@@ -91,18 +91,31 @@ function makeFrame(recipeFactory) {
     const pointer = { x: 4, y: 4, vx: 0, vy: 0 };
     const cw = state.w + 80, ch = state.h + 80, dpr = 1, padding = 40;
     if (recipe.init) recipe.init(ctx, state.w, state.h, padding);
+    let i = 0;
     return function frame() {
+        // Optional churn driver mutates state/pointer and fires interaction
+        // hooks IN PLACE (zero allocation in the driver itself) so a recipe's
+        // spawn/cull pool paths are measured by the gate, not just its idle
+        // tick body. `now` advances so time-driven animation runs too.
+        if (driver) driver(recipe, state, pointer, i);
+        i = (i + 1) | 0;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, cw, ch);
         ctx.save();
         ctx.translate(padding, padding);
-        recipe.tick(ctx, 0.016, 0, state, pointer);
+        recipe.tick(ctx, 0.016, i * 16, state, pointer);
         ctx.restore();
     };
 }
 
-async function gcGate(recipeFactory, { hot = 200000 } = {}) {
-    const frame = makeFrame(recipeFactory);
+async function gcGate(recipeFactory, { hot = 200000, driver = null, warm = 30000 } = {}) {
+    const frame = makeFrame(recipeFactory, driver);
+    // Warm up first: an aggressive churn driver flips state far faster than any
+    // real interaction, which makes V8 deopt/reopt the tick and allocate during
+    // that settling. Run (and discard) warm frames so the measured window is
+    // steady-state -- what a shipped frame actually costs, not JIT transients.
+    for (let i = 0; i < warm; i++) frame(i);
+    if (typeof globalThis.gc === 'function') globalThis.gc();
     const gc = new GcProfiler().start();
     for (let i = 0; i < hot; i++) {
         frame(i);
@@ -117,8 +130,8 @@ async function gcGate(recipeFactory, { hot = 200000 } = {}) {
 
 // Retention-based per-op bytes (stabilize:true -> requires --expose-gc). Reported
 // in the GATE line; the pass/fail verdict is the gcGate above.
-function allocPerOp(recipeFactory) {
-    const frame = makeFrame(recipeFactory);
+function allocPerOp(recipeFactory, driver = null) {
+    const frame = makeFrame(recipeFactory, driver);
     const res = measureOps(frame, { ops: 8192, warmup: 2048, stabilize: true });
     return res.bytesPerOp;
 }

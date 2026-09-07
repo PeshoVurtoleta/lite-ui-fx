@@ -1,7 +1,7 @@
 # @zakkster/lite-ui-fx
 > Canvas-hijacked UI components with pluggable recipe system. 50 built-in recipes.
 
-VERSION 1.2.0
+VERSION 1.3.0
 
 ## Install
 npm i @zakkster/lite-ui-fx
@@ -79,4 +79,6 @@ See UIFX-RECIPE-GUIDE.md (included in package).
 - Ref-counted shared Ticker (one RAF for all components)
 - Safari-safe roundRect polyfill in recipes
 - Accessibility: role=switch, aria-label, keyboard focus tracking
-- Zero-GC in all built-in recipes (TypedArrays, seeded RNG)
+- Zero-GC in all built-in recipes: const colors + globalAlpha, precomputed
+  color/label LUTs, fixed preallocated particle pools, gradients built in init.
+  Gated per recipe by the t3-frame-alloc torture tier.

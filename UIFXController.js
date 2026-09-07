@@ -22,7 +22,7 @@ import { Ticker } from '@zakkster/lite-ticker';
 
 // Three-place version sync: this constant, package.json "version", and the
 // VERSION line in llms.txt must always match. /release keeps them locked.
-export const VERSION = '1.2.0';
+export const VERSION = '1.3.0';
 
 // ---------------------------------------------------------
 //  SHARED TICKER (ref-counted, one RAF for all UI components)
@@ -213,7 +213,10 @@ export function mountUIFX(container, type, recipeFactory, options = {}) {
 
     // 4. recipe object + hooks. Created now so a bad recipe throws BEFORE any
     //    DOM/refcount side effect; .init is deferred to phase 2 (needs ctx).
-    const recipe = recipeFactory();
+    //    The validated options are forwarded so a recipe factory can read its
+    //    own visual config and default a canvas `text` to the accessible
+    //    `label`; a zero-arg or user-wrapped factory ignores the argument.
+    const recipe = recipeFactory(options);
     if (!recipe || typeof recipe !== 'object') {
         throw new Error('mountUIFX: recipe must be an object');
     }

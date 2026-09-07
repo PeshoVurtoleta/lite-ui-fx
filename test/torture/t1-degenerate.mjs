@@ -97,7 +97,7 @@ export async function runT1() {
         const base = RECIPES[m.id];
         assert.doesNotThrow(() => {
             // Degenerate geometry: zero-ish and absurd sizes both construct+run.
-            for (const dims of [{ width: 1, height: 1, padding: 0 }, { width: 4000, height: 2000, padding: 200 }]) {
+            for (const dims of [{ width: 1, height: 1, padding: 0 }, { width: 300, height: 48, padding: 40 }, { width: 4000, height: 2000, padding: 200 }]) {
                 const inst = mountUIFX(container, m.type, base, dims);
 
                 // Extreme pointer positions written straight onto the live pointer

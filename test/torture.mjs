@@ -100,17 +100,17 @@ async function tier(name, fn) {
 const { runT0 } = await import('./torture/t0-lifecycle.mjs');
 const { runT1 } = await import('./torture/t1-degenerate.mjs');
 const { runT2 } = await import('./torture/t2-a11y-contract.mjs');
+const { runT3 } = await import('./torture/t3-frame-alloc.mjs');
 const { runT4 } = await import('./torture/t4-soak.mjs');
 const { runT5 } = await import('./torture/t5-scale.mjs');
 
 await tier('t0-lifecycle', runT0);
 await tier('t1-degenerate', runT1);
 await tier('t2-a11y-contract', runT2);
+await tier('t3-frame-alloc', runT3);
 const r4 = await tier('t4-soak', runT4);
 await tier('t5-scale', runT5);
 
-// Empty registered tiers -- named with the session that fills them.
-console.error('skip tier=t3-frame-alloc (fills in U3)');
 // t5 IS imported and executed above; it is partially filled, not skipped.
 console.error('partial tier=t5-scale (U-02 regression + single-RAF; scale-cost/alloc in U3/U5)');
 
