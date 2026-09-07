@@ -48,10 +48,10 @@ const has = (set, needle) => {
 const THEME = { theme: { light: '#ff00aa', mid: '#00ffaa', dark: '#0a0a12' } };
 
 describe('U3b theming -- RECIPE_META flags', () => {
-    it('themeable is true for all 50 recipes', () => {
+    it('themeable is true for all 53 recipes', () => {
         for (const m of RECIPE_META) assert.equal(m.themeable, true, m.id + ' should be themeable');
     });
-    it('motionSafe stays false for all 50 (reduced motion is a later pass)', () => {
+    it('motionSafe stays false for all 53 (reduced motion is a later pass)', () => {
         for (const m of RECIPE_META) assert.equal(m.motionSafe, false, m.id + ' motionSafe');
     });
 });

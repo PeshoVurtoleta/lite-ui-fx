@@ -28,8 +28,10 @@ function pump(frames) {
 export async function runT0() {
     const container = makeContainer();
 
-    // -- Batch 1: synthetic counting recipe per UIType (kept from U1) --------
-    const types = [UIType.BUTTON, UIType.TOGGLE, UIType.SLIDER];
+    // -- Batch 1: synthetic counting recipe per UIType (kept from U1; U4a adds
+    //    CHECKBOX/PROGRESS/KNOB so lifecycle + the U-09 style refcount cover the
+    //    new native elements too). --------
+    const types = [UIType.BUTTON, UIType.TOGGLE, UIType.SLIDER, UIType.CHECKBOX, UIType.PROGRESS, UIType.KNOB];
     const headBefore = headChildCount();
 
     for (const type of types) {
@@ -106,7 +108,7 @@ export async function runT0() {
     const metaStyleDelta = headChildCount() - metaHeadBefore;
     assert.equal(metaStyleDelta, 0, 'meta batch nets ZERO into document.head');
     assert.equal(mounted, RECIPE_META.length, 'every RECIPE_META row mounted');
-    assert.equal(mounted, 50, 'all 50 recipes exercised');
+    assert.equal(mounted, 53, 'all 53 recipes exercised');
 
     return { styleDelta, mounted };
 }

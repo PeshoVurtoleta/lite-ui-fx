@@ -114,6 +114,67 @@ export async function runT2() {
         tog.destroy();
     }
 
+    // ---- U4a A10: CHECKBOX is a plain checkbox, NOT a switch. Same one-press
+    // activation contract as a toggle, plus indeterminate via setValue(null). ----
+    {
+        let toggles = 0;
+        const inst = mountUIFX(container, UIType.CHECKBOX, () => ({
+            tick() {}, onToggle() { toggles++; },
+        }));
+        assert.equal(inst.el.type, 'checkbox', 'A10: CHECKBOX is <input type=checkbox>');
+        assert.equal(inst.el.getAttribute('role'), null, 'A10: a check is NOT a switch (no role)');
+        keydown(inst.el, 'Space'); inst.el.click();
+        assert.equal(toggles, 1, 'A10: Space + native click -> exactly one onToggle');
+        assert.equal(inst.state.toggled, true, 'A10: state.toggled is the native truth');
+        inst.setValue(null);
+        assert.equal(inst.el.indeterminate, true, 'A10: setValue(null) -> native indeterminate');
+        assert.equal(inst.state.indeterminate, true, 'A10: setValue(null) -> state.indeterminate');
+        inst.destroy();
+    }
+
+    // ---- U4a A11: PROGRESS is a native <progress> (value exposed to AT), NON-
+    // interactive (value written programmatically by setValue), announce opt-in. --
+    {
+        let drags = 0;
+        const inst = mountUIFX(container, UIType.PROGRESS, () => ({ tick() {}, onDrag() { drags++; } }), { value: 0.2 });
+        assert.equal(inst.el.tagName, 'PROGRESS', 'A11: PROGRESS is a native <progress>');
+        assert.equal(inst.el.value, 0.2, 'A11: {value} exposed via the native element pre-frame');
+        inst.setValue(0.6);
+        assert.equal(inst.el.value, 0.6, 'A11: setValue reflects to the native element');
+        assert.equal(inst.state.val, 0.6, 'A11: setValue updates state.val');
+        assert.equal(drags, 1, 'A11: setValue fires the recipe hook exactly once');
+        inst.destroy();
+    }
+
+    // ---- U4a A12: KNOB is a range input (arrow keys native), setValue fires the
+    // hook once, knobMode is accepted. ----
+    {
+        let drags = 0;
+        const inst = mountUIFX(container, UIType.KNOB, () => ({ tick() {}, onDrag() { drags++; } }), { knobMode: 'vertical' });
+        assert.equal(inst.el.type, 'range', 'A12: KNOB is <input type=range> (native arrow keys)');
+        inst.setValue(0.25);
+        assert.equal(inst.state.val, 0.25, 'A12: setValue updates state.val');
+        assert.equal(inst.el.value, '25', 'A12: setValue reflects to the range element');
+        assert.equal(drags, 1, 'A12: setValue fires onDrag exactly once');
+        // Native arrow-key path: the range fires 'input'.
+        inst.el.value = '40';
+        inst.el.dispatchEvent(new EventStub('input'));
+        assert.equal(inst.state.val, 0.4, 'A12: native input (arrow key) drives value');
+        assert.equal(drags, 2, 'A12: native input fires onDrag');
+        inst.destroy();
+    }
+
+    // ---- U4a A13: setChecked one-call sync fires onToggle exactly once ----
+    {
+        let toggles = 0;
+        const inst = mountUIFX(container, UIType.CHECKBOX, () => ({ tick() {}, onToggle() { toggles++; } }));
+        inst.setChecked(true);
+        assert.equal(inst.el.checked, true, 'A13: setChecked -> native checked');
+        assert.equal(inst.state.toggled, true, 'A13: setChecked -> state.toggled');
+        assert.equal(toggles, 1, 'A13: setChecked fires onToggle exactly once');
+        inst.destroy();
+    }
+
     assert.equal(raf.pending(), 0, 't2 raf pending returns to 0');
     return {};
 }

@@ -21,7 +21,7 @@ const BAD = 50;   // the component whose recipe throws mid-soak
 const K = 5;      // frames the bad component survives before it throws
 const FRAMES = K + 10;
 
-const TYPES = [UIType.BUTTON, UIType.TOGGLE, UIType.SLIDER];
+const TYPES = [UIType.BUTTON, UIType.TOGGLE, UIType.SLIDER, UIType.CHECKBOX, UIType.PROGRESS, UIType.KNOB];
 
 export async function runT5() {
     const container = makeContainer();
@@ -50,7 +50,7 @@ export async function runT5() {
                 }
             },
         });
-        insts[idx] = mountUIFX(container, TYPES[idx % 3], factory);
+        insts[idx] = mountUIFX(container, TYPES[idx % TYPES.length], factory);
     }
 
     // Single-RAF invariant: all N components ride ONE shared Ticker, so exactly

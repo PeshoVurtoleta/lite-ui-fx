@@ -105,6 +105,6 @@ export function runT3() {
         assert.fail('t3 frame-alloc: ' + fails.length + '/' + real.length +
             ' recipes allocate on a hot frame -> ' + detail);
     }
-    assert.equal(real.length, 50, 'all 50 recipes gated by t3');
+    assert.equal(real.length, 53, 'all 53 recipes gated by t3');
     return { gated: real.length };
 }

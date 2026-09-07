@@ -142,7 +142,7 @@ export {
     Ctx2DStub, EventStub, PointerEventStub, FocusEventStub, raf,
     // controller
     mountUIFX, UIType,
-    // recipes registry (drives the meta-driven t0/t1 sweep over all 50)
+    // recipes registry (drives the meta-driven t0/t1 sweep over all 53)
     RECIPES, RECIPE_META,
     // signal
     createRoot, effect,

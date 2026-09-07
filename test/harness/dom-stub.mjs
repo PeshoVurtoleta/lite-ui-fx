@@ -3,7 +3,7 @@
 // Adapted from ../LiteAmbientFX/test/_helpers/dom-stub.mjs. Not jsdom. Zero deps.
 // ASCII-only.
 //
-// Covers exactly what UIFXController.js and the 50 recipes touch:
+// Covers exactly what UIFXController.js and the 53 recipes touch:
 //   document.createElement (div/button/input/canvas/style), appendChild/remove,
 //   children tracking, document.head child tracking, el.style object,
 //   setAttribute/getAttribute, classList, checkbox .checked + range .value,
@@ -119,6 +119,11 @@ class ElementStub {
         return child;
     }
     remove() { if (this.parentNode) this.parentNode.removeChild(this); }
+    // No-op focus/blur: the KNOB pointer remap calls el.focus() after
+    // preventDefault to restore keyboard focus. Node has no focus model; the
+    // stub only needs the method to exist so the cold path does not throw.
+    focus() {}
+    blur() {}
     getBoundingClientRect() {
         return { top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0 };
     }

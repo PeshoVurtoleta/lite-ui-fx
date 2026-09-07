@@ -1,11 +1,17 @@
 export declare const VERSION: string;
 
-export type UITypeValue = 'button' | 'toggle' | 'slider';
+export type UITypeValue = 'button' | 'toggle' | 'slider' | 'checkbox' | 'progress' | 'knob';
 
 export declare const UIType: Readonly<{
     BUTTON: 'button';
     TOGGLE: 'toggle';
     SLIDER: 'slider';
+    /** Plain checkbox (no role=switch); indeterminate via setValue(null). */
+    CHECKBOX: 'checkbox';
+    /** Native <progress>, non-interactive; value driven by setValue. */
+    PROGRESS: 'progress';
+    /** <input type=range>; arrows native, pointer mapped by knobMode. */
+    KNOB: 'knob';
 }>;
 
 export interface UIFXState {
@@ -13,6 +19,8 @@ export interface UIFXState {
     active: boolean;
     focused: boolean;
     toggled: boolean;
+    /** CHECKBOX only: the native indeterminate state (set via setValue(null)). */
+    indeterminate: boolean;
     disabled: boolean;
     val: number;
     w: number;
@@ -72,6 +80,10 @@ export interface MountOptions {
     text?: string;
     /** Canvas font string; falls back to the recipe's historical font. */
     font?: string;
+    /** KNOB only: pointer-to-value mapping (default 'rotate'). Throws on any other type. */
+    knobMode?: 'rotate' | 'vertical';
+    /** PROGRESS only: opt-in aria-live announcements at 10% steps. Throws on any other type. */
+    announce?: boolean;
 }
 
 export interface UIFXInstance {
@@ -79,6 +91,21 @@ export interface UIFXInstance {
     canvas: HTMLCanvasElement;
     wrapper: HTMLDivElement;
     state: UIFXState;
+
+    /**
+     * Set a valued control (SLIDER/KNOB/PROGRESS) to v in [0,1]: updates the
+     * native element, state.val, any PROGRESS announcer, and fires onDrag once.
+     * For a CHECKBOX, setValue(null) sets the indeterminate state. Throws on the
+     * wrong element type or an out-of-range value.
+     */
+    setValue(v: number | null): void;
+
+    /**
+     * Set a TOGGLE/CHECKBOX checked state: updates the native element,
+     * state.toggled, clears indeterminate, and fires onToggle exactly once.
+     * Throws on any other element type.
+     */
+    setChecked(b: boolean): void;
 
     destroy(): void;
 }

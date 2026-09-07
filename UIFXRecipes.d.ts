@@ -1,7 +1,7 @@
 import type { UIFXRecipe, UIFXInstance, MountOptions } from './UIFXController';
 
 // ===========================================================
-//  RECIPE OPTIONS + FACTORIES (all 50)
+//  RECIPE OPTIONS + FACTORIES (all 53)
 // ===========================================================
 
 /**
@@ -72,6 +72,9 @@ export declare function HelixLoader(options?: RecipeOptions): UIFXRecipe;
 // -- Vol.2: Checkboxes --
 export declare function RippleCheck(options?: RecipeOptions): UIFXRecipe;
 export declare function MorphCheck(options?: RecipeOptions): UIFXRecipe;
+// -- U4a: CHECKBOX recipes (honour st.indeterminate) --
+export declare function TickDraw(options?: RecipeOptions): UIFXRecipe;
+export declare function IndeterminateScan(options?: RecipeOptions): UIFXRecipe;
 
 // -- Vol.2: Counters --
 export declare function FlameCounter(options?: RecipeOptions): UIFXRecipe;
@@ -88,6 +91,8 @@ export declare function CompassKnob(options?: RecipeOptions): UIFXRecipe;
 export declare function RingProgress(options?: RecipeOptions): UIFXRecipe;
 export declare function BatteryGauge(options?: RecipeOptions): UIFXRecipe;
 export declare function SignalMeter(options?: RecipeOptions): UIFXRecipe;
+// -- U4a: PROGRESS recipe --
+export declare function LiquidFill(options?: RecipeOptions): UIFXRecipe;
 
 // -- Vol.3: Controls --
 export declare function PillTabs(options?: RecipeOptions): UIFXRecipe;
@@ -177,11 +182,18 @@ export declare const UIFXRecipes3: {
     PullRefresh: typeof PullRefresh;
 };
 
+/** U4a additions -- new native element types (kept out of the Vol.1-3 snapshots). */
+export declare const UIFXRecipes4: {
+    TickDraw: typeof TickDraw;
+    IndeterminateScan: typeof IndeterminateScan;
+    LiquidFill: typeof LiquidFill;
+};
+
 // ===========================================================
 //  RECIPE REGISTRY
 // ===========================================================
 
-export type RecipeType = 'toggle' | 'button' | 'slider';
+export type RecipeType = 'toggle' | 'button' | 'slider' | 'checkbox' | 'progress' | 'knob';
 
 export type RecipeFactory = (options?: Record<string, unknown>) => UIFXRecipe;
 
@@ -221,7 +233,7 @@ export declare function mountRecipe(
 ): UIFXInstance;
 
 // ===========================================================
-//  DEFAULT EXPORT -- combined all-50 namespace
+//  DEFAULT EXPORT -- combined all-53 namespace
 // ===========================================================
 
 declare const UIFXAllRecipes: {
@@ -252,6 +264,8 @@ declare const UIFXAllRecipes: {
     HelixLoader: typeof HelixLoader;
     RippleCheck: typeof RippleCheck;
     MorphCheck: typeof MorphCheck;
+    TickDraw: typeof TickDraw;
+    IndeterminateScan: typeof IndeterminateScan;
     FlameCounter: typeof FlameCounter;
     GlitchCounter: typeof GlitchCounter;
     BubbleRating: typeof BubbleRating;
@@ -260,6 +274,7 @@ declare const UIFXAllRecipes: {
     RingProgress: typeof RingProgress;
     BatteryGauge: typeof BatteryGauge;
     SignalMeter: typeof SignalMeter;
+    LiquidFill: typeof LiquidFill;
     PillTabs: typeof PillTabs;
     Stepper: typeof Stepper;
     RadioOrbit: typeof RadioOrbit;

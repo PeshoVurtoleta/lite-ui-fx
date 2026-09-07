@@ -7,7 +7,7 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { installDom, makeContainer, headChildCount, emitDpr, setDpr } from './harness/dom-stub.mjs';
+import { installDom, makeContainer, headChildCount, emitDpr, setDpr, EventStub } from './harness/dom-stub.mjs';
 import * as raf from './harness/raf-stub.mjs';
 
 installDom();
@@ -600,5 +600,112 @@ describe('mountUIFX', () => {
         c.destroy();
         d.destroy();
         assert.equal(headChildCount(), headBase, 'style removed once the last slider dies; head nets to 0');
+    });
+});
+
+// ---------------------------------------------------------------------------
+//  U4a -- new native element types (CHECKBOX, PROGRESS, KNOB) + setValue/setChecked
+// ---------------------------------------------------------------------------
+
+describe('U4a element types', () => {
+    let ctr;
+    beforeEach(() => { ctr = makeContainer(); });
+    afterEach(() => {
+        ctr.remove();
+        assert.equal(raf.pending(), 0, 'raf queue must drain to 0 after each test');
+    });
+
+    it('CHECKBOX is a plain <input type=checkbox> with NO role=switch', () => {
+        const i = mountUIFX(ctr, UIType.CHECKBOX, recipe());
+        assert.equal(i.el.tagName, 'INPUT');
+        assert.equal(i.el.type, 'checkbox');
+        assert.equal(i.el.getAttribute('role'), null, 'a check is not a switch');
+        i.destroy();
+    });
+
+    it('PROGRESS is a native <progress> exposing value to AT', () => {
+        const i = mountUIFX(ctr, UIType.PROGRESS, recipe(), { value: 0.4 });
+        assert.equal(i.el.tagName, 'PROGRESS');
+        assert.equal(i.el.value, 0.4);
+        assert.equal(i.state.val, 0.4);
+        i.destroy();
+    });
+
+    it('KNOB is a native <input type=range> (arrow keys stay native)', () => {
+        const i = mountUIFX(ctr, UIType.KNOB, recipe(), { knobMode: 'vertical' });
+        assert.equal(i.el.tagName, 'INPUT');
+        assert.equal(i.el.type, 'range');
+        i.destroy();
+    });
+
+    it('setValue(v) updates el + state.val and fires onDrag exactly once', () => {
+        const drag = makeSpy();
+        const i = mountUIFX(ctr, UIType.SLIDER, recipe({ onDrag: drag }));
+        i.setValue(0.7);
+        assert.equal(i.state.val, 0.7);
+        assert.equal(i.el.value, '70');
+        assert.equal(drag.calls.length, 1, 'exactly one onDrag');
+        i.destroy();
+    });
+
+    it('setChecked(b) updates el + state.toggled and fires onToggle exactly once', () => {
+        const tog = makeSpy();
+        const i = mountUIFX(ctr, UIType.CHECKBOX, recipe({ onToggle: tog }));
+        i.setChecked(true);
+        assert.equal(i.el.checked, true);
+        assert.equal(i.state.toggled, true);
+        assert.equal(tog.calls.length, 1, 'exactly one onToggle');
+        i.destroy();
+    });
+
+    it('CHECKBOX setValue(null) sets the indeterminate state', () => {
+        const i = mountUIFX(ctr, UIType.CHECKBOX, recipe());
+        i.setValue(null);
+        assert.equal(i.el.indeterminate, true);
+        assert.equal(i.state.indeterminate, true);
+        // a subsequent user change clears it
+        i.el.click();
+        assert.equal(i.state.indeterminate, false, 'a user interaction resolves indeterminate');
+        i.destroy();
+    });
+
+    it('PROGRESS { announce:true } creates an aria-live region updated by setValue', () => {
+        const i = mountUIFX(ctr, UIType.PROGRESS, recipe(), { announce: true });
+        const live = i.wrapper.children.find((n) => n.getAttribute && n.getAttribute('aria-live') === 'polite');
+        assert.ok(live, 'aria-live region present');
+        i.setValue(0.6);
+        assert.equal(live.textContent, '60%');
+        i.destroy();
+    });
+
+    it('KNOB native input (arrow key) drives value + onDrag', () => {
+        const drag = makeSpy();
+        const i = mountUIFX(ctr, UIType.KNOB, recipe({ onDrag: drag }));
+        i.el.value = '40';
+        i.el.dispatchEvent(new EventStub('input'));
+        assert.equal(i.state.val, 0.4);
+        assert.equal(drag.calls.length, 1);
+        i.destroy();
+    });
+
+    // -- fail closed --
+
+    it('knobMode is KNOB-only; announce is PROGRESS-only; bad values throw', () => {
+        assert.throws(() => mountUIFX(ctr, UIType.SLIDER, recipe(), { knobMode: 'rotate' }), /knobMode/);
+        assert.throws(() => mountUIFX(ctr, UIType.KNOB, recipe(), { knobMode: 'sideways' }), /knobMode/);
+        assert.throws(() => mountUIFX(ctr, UIType.SLIDER, recipe(), { announce: true }), /announce/);
+        assert.throws(() => mountUIFX(ctr, UIType.PROGRESS, recipe(), { announce: 'yes' }), /announce/);
+    });
+
+    it('setValue / setChecked fail closed on the wrong type or a bad value', () => {
+        const btn = mountUIFX(ctr, UIType.BUTTON, recipe());
+        assert.throws(() => btn.setValue(0.5), /setValue/);
+        assert.throws(() => btn.setChecked(true), /setChecked/);
+        btn.destroy();
+        const sl = mountUIFX(ctr, UIType.SLIDER, recipe());
+        assert.throws(() => sl.setValue(1.5), /\[0,1\]/);
+        assert.throws(() => sl.setChecked(true), /setChecked/);
+        assert.throws(() => sl.setValue(null), /setValue/);
+        sl.destroy();
     });
 });

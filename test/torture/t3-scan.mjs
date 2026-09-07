@@ -20,23 +20,29 @@ const GRAD_FRAMES = 48;
 
 function baseState() {
     return {
-        hover: false, active: false, focused: false, toggled: false,
+        hover: false, active: false, focused: false, toggled: false, indeterminate: false,
         val: 0.5, w: 160, h: 48, padding: 40, dpr: 1,
     };
 }
 
 // Mutate state in place and fire the type's interaction hook periodically. The
 // driver allocates nothing itself, so any bytes the gate sees are the recipe's.
+// U4a types: knob drives like a slider (onDrag + value sweep); checkbox like a
+// toggle (onToggle) but also sweeps the indeterminate branch; progress sweeps
+// value with NO hook (it is non-interactive -- value is set programmatically).
 function makeChurn(type) {
+    const valued = type === 'slider' || type === 'knob' || type === 'progress';
+    const toggled = type === 'toggle' || type === 'checkbox';
     return function churn(recipe, st, ptr, i) {
         if ((i & 15) === 0) { st.hover = true; if (recipe.onHover) recipe.onHover(st, ptr); }
         else if ((i & 15) === 8) { st.hover = false; if (recipe.onLeave) recipe.onLeave(st, ptr); }
         st.focused = (i & 63) < 32;
-        if (type === 'slider') {
+        if (valued) {
             const v = (Math.sin(i * 0.06) + 1) * 0.5;
             ptr.vx = (v - st.val) * 60; st.val = v;
-            if ((i & 7) === 0 && recipe.onDrag) recipe.onDrag(st.val, ptr.vx, st);
-        } else if (type === 'toggle') {
+            if (type !== 'progress' && (i & 7) === 0 && recipe.onDrag) recipe.onDrag(st.val, ptr.vx, st);
+        } else if (toggled) {
+            st.indeterminate = type === 'checkbox' && (i & 31) < 8;  // exercise both branches
             if ((i & 15) === 0) { st.toggled = !st.toggled; if (recipe.onToggle) recipe.onToggle(st.toggled, st); }
         } else { // button
             if ((i & 11) === 0) { st.active = true; if (recipe.onClick) recipe.onClick(ptr.x, ptr.y, st); }

@@ -21,26 +21,26 @@ https://cdpn.io/pen/debug/yyaPKpB
 ## Live Demo (UI-FX vol3.)
 https://cdpn.io/pen/debug/YPGEaYY
 
-**50 recipes** across UI element categories:
+**53 recipes** across UI element categories:
 
 - **Toggles** -- Swarm, Liquid, Neon Pulse, Pendulum, Circuit, Lightning, DNA
 - **Buttons** -- Magnetic, Shatter, Confetti, Glitch, Heartbeat, Breathing, Ink Splash, Pixel Dissolve, Firework
 - **Sliders** -- Spark, Cosmic Void, Laser, Aurora, Wave, Elastic Band, Gravity
 - **Knobs** -- Volume dial, Compass needle
-- **Progress** -- Ring, Battery, Signal meter
+- **Progress** -- Ring, Battery, Signal meter, Liquid Fill
 - **Controls** -- Pill tabs, Stepper, Radio orbit
 - **Indicators** -- Password strength, Water level, Heat map
 - **Mood** -- Day/night, Reaction picker, Notification bell
 - **Feedback** -- Typewriter, Sound wave, Upload progress
 - **Fun** -- Scratch reveal, Timer countdown, Pull refresh
-- **Checkboxes** -- Ripple, Morph (X to check)
+- **Checkboxes** -- Ripple, Morph (X to check), Tick Draw, Indeterminate Scan
 - **Loaders** -- Orbit planets, DNA helix
 - **Counters** -- Flame heat, Glitch signal
 - **Rating** -- Bubble inflate
 
 Every recipe is zero-GC, uses `dt`-based animation, and includes accessibility indicators (focus rings, state labels).
 
-All 50 recipes ship in the package on the `./recipes` subpath -- versioned,
+All 53 recipes ship in the package on the `./recipes` subpath -- versioned,
 typed, and tree-shakeable. With `sideEffects: false`, importing one recipe pulls
 in only that recipe, so a controller-only install stays tiny.
 
@@ -65,7 +65,7 @@ Part of the [@zakkster/lite-*](https://www.npmjs.com/org/zakkster) ecosystem.
 npm i @zakkster/lite-ui-fx
 ```
 
-> The 50 recipes ship in the same package on the `./recipes` subpath and
+> The 53 recipes ship in the same package on the `./recipes` subpath and
 > tree-shake, so importing one adds only that one.
 
 
@@ -97,7 +97,7 @@ instance.destroy();
 // Controller (always needed)
 import { mountUIFX, UIType } from '@zakkster/lite-ui-fx';
 
-// All 50 recipes ship on the ./recipes subpath (tree-shakeable) -- import by name:
+// All 53 recipes ship on the ./recipes subpath (tree-shakeable) -- import by name:
 import { SwarmToggle, MagneticButton, SparkSlider } from '@zakkster/lite-ui-fx/recipes';
 import { PendulumToggle, HeartbeatButton, RippleCheck } from '@zakkster/lite-ui-fx/recipes';
 import { VolumeKnob, WaterLevel, TimerCountdown } from '@zakkster/lite-ui-fx/recipes';
@@ -136,7 +136,7 @@ import { RECIPES, RECIPE_META, RECIPE_NAMES, registerRecipe, mountRecipe } from 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `container` | `HTMLElement` | Parent to mount into |
-| `type` | `'button' \| 'toggle' \| 'slider'` | Determines native element type |
+| `type` | `'button' \| 'toggle' \| 'slider' \| 'checkbox' \| 'progress' \| 'knob'` | Determines native element type |
 | `recipeFactory` | `() => Recipe` | Factory function (controller calls it) |
 | `options.width` | `number` | Element width (auto from type if omitted) |
 | `options.height` | `number` | Element height |
@@ -145,8 +145,18 @@ import { RECIPES, RECIPE_META, RECIPE_NAMES, registerRecipe, mountRecipe } from 
 | `options.value` | `number` | Slider initial value, 0..1 (default 0.5); out-of-range throws |
 | `options.checked` | `boolean` | Toggle initial state (default false) |
 | `options.disabled` | `boolean` | Disables the native element; sets `state.disabled` |
+| `options.knobMode` | `'rotate' \| 'vertical'` | KNOB only: pointer-to-value mapping (default `'rotate'`); wrong type throws |
+| `options.announce` | `boolean` | PROGRESS only: opt-in `aria-live` announcements at 10% steps; wrong type throws |
 
-Returns `{ el, canvas, wrapper, state, destroy() }`.
+Recipe theming options (`seed`, `colors`, `theme`, `text`, `font`) are also
+accepted and forwarded to the recipe -- see `llms.txt` for the full option surface.
+
+Returns `{ el, canvas, wrapper, state, setValue(v), setChecked(b), destroy() }`.
+
+- `setValue(v)` -- SLIDER/KNOB/PROGRESS: set `v` in `0..1` (updates the element +
+  `state.val`, fires `onDrag` once). CHECKBOX: `setValue(null)` sets indeterminate.
+- `setChecked(b)` -- TOGGLE/CHECKBOX: set checked (updates the element +
+  `state.toggled`, fires `onToggle` once).
 
 ### Element Types
 
@@ -155,6 +165,9 @@ Returns `{ el, canvas, wrapper, state, destroy() }`.
 | `UIType.TOGGLE` | `<input type="checkbox" role="switch">` | `onToggle(checked)` | `state.toggled` |
 | `UIType.BUTTON` | `<button>` | `onClick(x, y, state)` | `state.active` |
 | `UIType.SLIDER` | `<input type="range">` | `onDrag(val, velocity)` | `state.val` (0-1) |
+| `UIType.CHECKBOX` | `<input type="checkbox">` (no `role=switch`) | `onToggle(checked)` | `state.toggled`, `state.indeterminate` |
+| `UIType.PROGRESS` | `<progress>` (non-interactive) | (driven by `setValue`) | `state.val` (0-1) |
+| `UIType.KNOB` | `<input type="range">` | `onDrag(val, velocity)` | `state.val` (0-1) |
 
 ### State Object (provided to `tick()` every frame)
 
@@ -163,7 +176,8 @@ Returns `{ el, canvas, wrapper, state, destroy() }`.
     hover: boolean;      // Pointer inside element
     active: boolean;     // Pointer pressed
     focused: boolean;    // Keyboard focus
-    toggled: boolean;    // Checkbox state
+    toggled: boolean;    // Checkbox/toggle state
+    indeterminate: boolean; // CHECKBOX only: native indeterminate (setValue(null))
     disabled: boolean;   // Disabled via options.disabled
     val: number;         // Slider value (0-1)
     w: number;           // Element width
@@ -180,7 +194,7 @@ Returns `{ el, canvas, wrapper, state, destroy() }`.
 | Framer Motion | ~45 KB | React HOC | 0 | Via React | `npm i framer-motion` |
 | GSAP | ~25 KB | Timeline | 0 | Manual | `npm i gsap` |
 | Lottie | ~55 KB | JSON animation | After Effects | Manual | `npm i lottie-web` |
-| **lite-ui-fx** | **< 5 KB** | **Canvas hijack** | **50 built-in** | **Native + visual** | **`npm i @zakkster/lite-ui-fx`** |
+| **lite-ui-fx** | **< 5 KB** | **Canvas hijack** | **53 built-in** | **Native + visual** | **`npm i @zakkster/lite-ui-fx`** |
 
 ## Writing Custom Recipes
 

@@ -27,9 +27,9 @@ describe('recipe registry + metadata', () => {
         assert.equal(RECIPES['constructor'], undefined);
     });
 
-    it('RECIPE_NAMES is frozen and has 50 entries at load', () => {
+    it('RECIPE_NAMES is frozen and has 53 entries at load', () => {
         assert.equal(Object.isFrozen(RECIPE_NAMES), true);
-        assert.equal(RECIPE_NAMES.length, 50);
+        assert.equal(RECIPE_NAMES.length, 53);
     });
 
     it('every meta row resolves to a factory (bijection at load)', () => {
@@ -119,9 +119,10 @@ describe('recipe registry + metadata', () => {
         // No type, no prior entry -> throw, and RECIPES must NOT be mutated.
         assert.throws(() => registerRecipe('noType', () => ({ tick() {} })), TypeError);
         assert.equal(RECIPES.noType, undefined, 'rejected registration must not mutate RECIPES');
-        // An explicit but invalid type -> throw (knob is a U4 element type, not yet real).
-        assert.throws(() => registerRecipe('knobby', () => ({ tick() {} }), { type: 'knob' }), TypeError);
-        assert.equal(RECIPES.knobby, undefined);
+        // An explicit but invalid type -> throw ('gauge' is not a UIType; knob
+        // and progress became real in U4a, so the example must stay unreal).
+        assert.throws(() => registerRecipe('gaugey', () => ({ tick() {} }), { type: 'gauge' }), TypeError);
+        assert.equal(RECIPES.gaugey, undefined);
     });
 });
 
@@ -223,7 +224,7 @@ describe('boundary matrix (QA U2)', () => {
         assert.equal(RECIPE_META.find((m) => m.id === 'qaNoType'), undefined);
 
         assert.throws(
-            () => registerRecipe('qaBadType', () => ({ tick() {} }), { type: 'knob' }),
+            () => registerRecipe('qaBadType', () => ({ tick() {} }), { type: 'gauge' }),
             TypeError,
         );
         assert.equal(RECIPES.qaBadType, undefined, 'invalid-type registration must not mutate RECIPES');

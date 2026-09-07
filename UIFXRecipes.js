@@ -1,9 +1,9 @@
 /**
- * @zakkster/lite-ui-fx -- Recipe Collection (all 50)
+ * @zakkster/lite-ui-fx -- Recipe Collection (all 53)
  *
  * The three recipe volumes consolidated into one shipped, typed, versioned
- * module, exposed as the ./recipes subpath export. See
- * decisions/0001-recipes-position.md.
+ * module, exposed as the ./recipes subpath export, plus the U4a additions for
+ * the new native element types. See decisions/0001-recipes-position.md.
  *
  *   Vol.1 (10): SwarmToggle, LiquidToggle, NeonPulseToggle, MagneticButton,
  *               ShatterButton, ConfettiButton, GlitchButton, SparkSlider,
@@ -18,6 +18,7 @@
  *               HeatMap, DayNightToggle, ReactionPicker, NotificationBell,
  *               TypewriterField, SoundWaveBtn, UploadProgress, ScratchReveal,
  *               TimerCountdown, PullRefresh
+ *   U4a (3):    TickDraw, IndeterminateScan (CHECKBOX), LiquidFill (PROGRESS)
  *
  * Registry: RECIPES (null-prototype), RECIPE_META (live), RECIPE_NAMES,
  * registerRecipe(id, factory, meta?), mountRecipe(container, id, options?).
@@ -1588,6 +1589,84 @@ export function MorphCheck(o = {}) {
     };
 }
 
+/** Tick Draw (U4a CHECKBOX) -- the checkmark strokes itself on; a centred dash
+ *  when indeterminate; empty when off. Reads st.toggled + st.indeterminate. */
+export function TickDraw(o = {}) {
+    const P = resolveTheme(o, { accent: '#34d399', surface: '#0a0a12', dim2: '#8888aa' });
+    const boxOff = 'rgba(255,255,255,.06)';
+    const FONT = pickFont(o, "500 9px 'JetBrains Mono',monospace");
+    let drawT = 0;   // 0..1 stroke progress of the check
+    return {
+        tick(ctx, dt, now, st) {
+            // Indeterminate suppresses the check; a full check draws only when on.
+            drawT = lerp(drawT, st.indeterminate ? 0 : (st.toggled ? 1 : 0), dt * 12);
+            const sz = Math.min(st.w, st.h), cx = sz / 2, cy = sz / 2, r = 6;
+
+            ctx.fillStyle = (st.toggled || st.indeterminate) ? P.accent : boxOff;
+            roundRect(ctx, 0, 0, sz, sz, r); ctx.fill();
+
+            ctx.strokeStyle = P.surface; ctx.lineWidth = 3; ctx.lineCap = 'round';
+            if (st.indeterminate) {
+                // Standard indeterminate glyph: one centred dash.
+                ctx.beginPath(); ctx.moveTo(sz * 0.28, cy); ctx.lineTo(sz * 0.72, cy); ctx.stroke();
+            } else if (drawT > 0.01) {
+                const p1 = clamp(drawT * 2, 0, 1), p2 = clamp(drawT * 2 - 1, 0, 1);
+                ctx.beginPath();
+                ctx.moveTo(cx - 7, cy);
+                ctx.lineTo(cx - 7 + 7 * p1, cy + 7 * p1);
+                if (p2 > 0) ctx.lineTo(cx + 14 * p2, cy + 7 - 14 * p2);
+                ctx.stroke();
+            }
+            ctx.lineCap = 'butt';
+
+            label(ctx, st.indeterminate ? '\u2212' : (st.toggled ? '\u2713' : '\u25cb'),
+                cx, sz + 12, (st.toggled || st.indeterminate) ? P.accent : P.dim2, FONT);
+            if (st.focused) focusRing(ctx, sz, sz, r);
+        },
+    };
+}
+
+/** Indeterminate Scan (U4a CHECKBOX) -- sweeps a scan line while indeterminate,
+ *  settles to a stroked check when toggled, empty when off. */
+export function IndeterminateScan(o = {}) {
+    const P = resolveTheme(o, { accent: '#60a5fa', surface: '#0a0a12', dim2: '#8888aa' });
+    const FONT = pickFont(o, "500 9px 'JetBrains Mono',monospace");
+    let scan = 0;    // 0..1 sweep phase
+    let checkT = 0;  // 0..1 check reveal
+    return {
+        tick(ctx, dt, now, st) {
+            checkT = lerp(checkT, (!st.indeterminate && st.toggled) ? 1 : 0, dt * 12);
+            const sz = Math.min(st.w, st.h), cx = sz / 2, cy = sz / 2, r = 6;
+
+            ctx.fillStyle = (st.toggled && !st.indeterminate) ? P.accent : 'rgba(255,255,255,.06)';
+            roundRect(ctx, 0, 0, sz, sz, r); ctx.fill();
+
+            if (st.indeterminate) {
+                // Scan line sweeping down, fading at the sweep ends (globalAlpha,
+                // not a per-frame colour string).
+                scan += dt * 1.6; if (scan > 1) scan -= 1;
+                const y = 4 + scan * (sz - 8);
+                ctx.strokeStyle = P.accent; ctx.lineWidth = 2; ctx.lineCap = 'round';
+                ctx.globalAlpha = Math.sin(scan * Math.PI);
+                ctx.beginPath(); ctx.moveTo(4, y); ctx.lineTo(sz - 4, y); ctx.stroke();
+                ctx.globalAlpha = 1; ctx.lineCap = 'butt';
+            } else if (checkT > 0.01) {
+                const p1 = clamp(checkT * 2, 0, 1), p2 = clamp(checkT * 2 - 1, 0, 1);
+                ctx.strokeStyle = P.surface; ctx.lineWidth = 3; ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(cx - 7, cy);
+                ctx.lineTo(cx - 7 + 7 * p1, cy + 7 * p1);
+                if (p2 > 0) ctx.lineTo(cx + 14 * p2, cy + 7 - 14 * p2);
+                ctx.stroke(); ctx.lineCap = 'butt';
+            }
+
+            label(ctx, st.indeterminate ? '\u2212' : (st.toggled ? '\u2713' : '\u25cb'),
+                cx, sz + 12, (st.toggled || st.indeterminate) ? P.accent : P.dim2, FONT);
+            if (st.focused) focusRing(ctx, sz, sz, r);
+        },
+    };
+}
+
 
 // ===========================================================
 //  COUNTERS (use slider val as input)
@@ -2036,6 +2115,55 @@ export function SignalMeter(o = {}) {
 // ===========================================================
 //  CONTROLS
 // ===========================================================
+
+/** Liquid Fill (U4a PROGRESS) -- a container that fills with a waving liquid to
+ *  the progress value, with a percentage readout. Non-interactive. */
+export function LiquidFill(o = {}) {
+    const P = resolveTheme(o, { accent: '#22d3ee', accent2: '#0ea5e9', dim: '#e2e2f0' });
+    const FONT = pickFont(o, "700 14px 'JetBrains Mono',monospace");
+    let displayVal = 0, phase = 0, liquid = null;
+    return {
+        init(c, w, h) {
+            // Vertical liquid gradient, built ONCE (cold): crest -> base.
+            const g = c.createLinearGradient(0, 0, 0, h);
+            g.addColorStop(0, P.accent);
+            g.addColorStop(1, P.accent2);
+            liquid = g;
+        },
+        tick(c, dt, now, st) {
+            displayVal = lerp(displayVal, st.val, dt * 5);
+            phase += dt * 3;
+            const w = st.w, h = st.h, r = Math.min(12, h / 2);
+
+            // Container outline
+            c.strokeStyle = 'rgba(255,255,255,.14)'; c.lineWidth = 2;
+            roundRect(c, 1, 1, w - 2, h - 2, r); c.stroke();
+
+            // Liquid body, clipped to the container, with a sine surface. Const
+            // gradient fill + fixed-step sampling -> zero per-frame allocation.
+            c.save();
+            roundRect(c, 1, 1, w - 2, h - 2, r); c.clip();
+            const surface = h - displayVal * h;
+            const amp = displayVal > 0.01 && displayVal < 0.99 ? 3 : 0;
+            c.fillStyle = liquid || P.accent;
+            c.beginPath();
+            c.moveTo(0, h);
+            c.lineTo(0, surface);
+            for (let x = 0; x <= w; x += 6) {
+                c.lineTo(x, surface + Math.sin(x * 0.15 + phase) * amp);
+            }
+            c.lineTo(w, h);
+            c.closePath();
+            c.fill();
+            c.restore();
+
+            // Percentage readout (PCT LUT -- no per-frame string build)
+            c.fillStyle = P.dim; c.font = FONT; c.textAlign = 'center'; c.textBaseline = 'middle';
+            c.fillText(PCT[Math.round(displayVal * 100)], w / 2, h / 2);
+            if (st.focused) fr(c, w, h, r);
+        },
+    };
+}
 
 /** 6. Pill Tabs -- 3 segmented tabs with sliding indicator. */
 export function PillTabs(o = {}) {
@@ -2726,9 +2854,17 @@ export const UIFXRecipes3 = {
     ScratchReveal, TimerCountdown, PullRefresh,
 };
 
+// U4a additions -- new native element types (CHECKBOX, PROGRESS). Kept out of the
+// Vol.1-3 historical snapshots above so those stay accurate; all recipes remain
+// reachable via RECIPES / RECIPE_META and their named exports regardless.
+export const UIFXRecipes4 = {
+    TickDraw, IndeterminateScan,
+    LiquidFill,
+};
+
 
 // ===========================================================
-//  DEFAULT EXPORT -- combined all-50 namespace
+//  DEFAULT EXPORT -- combined all-53 namespace
 // ===========================================================
 
 export default {
@@ -2759,6 +2895,8 @@ export default {
     HelixLoader,
     RippleCheck,
     MorphCheck,
+    TickDraw,
+    IndeterminateScan,
     FlameCounter,
     GlitchCounter,
     BubbleRating,
@@ -2767,6 +2905,7 @@ export default {
     RingProgress,
     BatteryGauge,
     SignalMeter,
+    LiquidFill,
     PillTabs,
     Stepper,
     RadioOrbit,
@@ -2822,6 +2961,8 @@ export const RECIPES = Object.assign(Object.create(null), {
     helixLoader: HelixLoader,
     rippleCheck: RippleCheck,
     morphCheck: MorphCheck,
+    tickDraw: TickDraw,
+    indeterminateScan: IndeterminateScan,
     flameCounter: FlameCounter,
     glitchCounter: GlitchCounter,
     bubbleRating: BubbleRating,
@@ -2830,6 +2971,7 @@ export const RECIPES = Object.assign(Object.create(null), {
     ringProgress: RingProgress,
     batteryGauge: BatteryGauge,
     signalMeter: SignalMeter,
+    liquidFill: LiquidFill,
     pillTabs: PillTabs,
     stepper: Stepper,
     radioOrbit: RadioOrbit,
@@ -2883,16 +3025,19 @@ export const RECIPE_META = [
     { id: 'gravitySlider', name: 'Gravity Slider', type: 'slider', family: 'Sliders', themeable: true, motionSafe: false },
     { id: 'orbitLoader', name: 'Orbit Loader', type: 'toggle', family: 'Loaders', themeable: true, motionSafe: false },
     { id: 'helixLoader', name: 'Helix Loader', type: 'toggle', family: 'Loaders', themeable: true, motionSafe: false },
-    { id: 'rippleCheck', name: 'Ripple Check', type: 'toggle', family: 'Checkboxes', themeable: true, motionSafe: false },
-    { id: 'morphCheck', name: 'Morph Check', type: 'toggle', family: 'Checkboxes', themeable: true, motionSafe: false },
+    { id: 'rippleCheck', name: 'Ripple Check', type: 'checkbox', family: 'Checkboxes', themeable: true, motionSafe: false },
+    { id: 'morphCheck', name: 'Morph Check', type: 'checkbox', family: 'Checkboxes', themeable: true, motionSafe: false },
+    { id: 'tickDraw', name: 'Tick Draw', type: 'checkbox', family: 'Checkboxes', themeable: true, motionSafe: false },
+    { id: 'indeterminateScan', name: 'Indeterminate Scan', type: 'checkbox', family: 'Checkboxes', themeable: true, motionSafe: false },
     { id: 'flameCounter', name: 'Flame Counter', type: 'slider', family: 'Counters', themeable: true, motionSafe: false },
     { id: 'glitchCounter', name: 'Glitch Counter', type: 'slider', family: 'Counters', themeable: true, motionSafe: false },
     { id: 'bubbleRating', name: 'Bubble Rating', type: 'slider', family: 'Rating', themeable: true, motionSafe: false },
-    { id: 'volumeKnob', name: 'Volume Knob', type: 'slider', family: 'Knobs', themeable: true, motionSafe: false },
-    { id: 'compassKnob', name: 'Compass Knob', type: 'slider', family: 'Knobs', themeable: true, motionSafe: false },
-    { id: 'ringProgress', name: 'Ring Progress', type: 'slider', family: 'Progress', themeable: true, motionSafe: false },
-    { id: 'batteryGauge', name: 'Battery Gauge', type: 'slider', family: 'Progress', themeable: true, motionSafe: false },
-    { id: 'signalMeter', name: 'Signal Meter', type: 'slider', family: 'Progress', themeable: true, motionSafe: false },
+    { id: 'volumeKnob', name: 'Volume Knob', type: 'knob', family: 'Knobs', themeable: true, motionSafe: false },
+    { id: 'compassKnob', name: 'Compass Knob', type: 'knob', family: 'Knobs', themeable: true, motionSafe: false },
+    { id: 'ringProgress', name: 'Ring Progress', type: 'progress', family: 'Progress', themeable: true, motionSafe: false },
+    { id: 'batteryGauge', name: 'Battery Gauge', type: 'progress', family: 'Progress', themeable: true, motionSafe: false },
+    { id: 'signalMeter', name: 'Signal Meter', type: 'progress', family: 'Progress', themeable: true, motionSafe: false },
+    { id: 'liquidFill', name: 'Liquid Fill', type: 'progress', family: 'Progress', themeable: true, motionSafe: false },
     { id: 'pillTabs', name: 'Pill Tabs', type: 'button', family: 'Controls', themeable: true, motionSafe: false },
     { id: 'stepper', name: 'Stepper', type: 'button', family: 'Controls', themeable: true, motionSafe: false },
     { id: 'radioOrbit', name: 'Radio Orbit', type: 'slider', family: 'Controls', themeable: true, motionSafe: false },
@@ -2904,7 +3049,7 @@ export const RECIPE_META = [
     { id: 'notificationBell', name: 'Notification Bell', type: 'button', family: 'Mood', themeable: true, motionSafe: false },
     { id: 'typewriterField', name: 'Typewriter Field', type: 'toggle', family: 'Feedback', themeable: true, motionSafe: false },
     { id: 'soundWaveBtn', name: 'Sound Wave Btn', type: 'button', family: 'Feedback', themeable: true, motionSafe: false },
-    { id: 'uploadProgress', name: 'Upload Progress', type: 'slider', family: 'Feedback', themeable: true, motionSafe: false },
+    { id: 'uploadProgress', name: 'Upload Progress', type: 'progress', family: 'Feedback', themeable: true, motionSafe: false },
     { id: 'scratchReveal', name: 'Scratch Reveal', type: 'slider', family: 'Fun', themeable: true, motionSafe: false },
     { id: 'timerCountdown', name: 'Timer Countdown', type: 'toggle', family: 'Fun', themeable: true, motionSafe: false },
     { id: 'pullRefresh', name: 'Pull Refresh', type: 'slider', family: 'Fun', themeable: true, motionSafe: false },
@@ -2912,6 +3057,11 @@ export const RECIPE_META = [
 
 /** Names of every built-in recipe (the keys of RECIPES at load time). */
 export const RECIPE_NAMES = Object.freeze(Object.keys(RECIPES));
+
+// The valid recipe/mount types, taken from the controller's UIType so the
+// registry's fail-closed check and the controller's mount guard are one source
+// of truth (they cannot drift as U4 adds types). Built once at load (cold).
+const VALID_META_TYPES = new Set(Object.values(UIType));
 
 /**
  * Register a custom recipe, or override a built-in. Instantly usable via
@@ -2937,9 +3087,11 @@ export function registerRecipe(id, factory, meta) {
     const type = (meta && meta.type) || (prev && prev.type) || undefined;
     // A recipe's type selects its native element; a typeless recipe cannot be
     // mounted. Reject it at registration (fail closed) -- checked BEFORE any
-    // mutation, so a rejected call leaves RECIPES/RECIPE_META untouched.
-    if (type !== 'toggle' && type !== 'button' && type !== 'slider') {
-        throw new TypeError('registerRecipe: type must be "toggle", "button", or "slider"');
+    // mutation, so a rejected call leaves RECIPES/RECIPE_META untouched. The
+    // valid set is UIType (VALID_META_TYPES), so registry + controller never
+    // disagree about what a type is.
+    if (!VALID_META_TYPES.has(type)) {
+        throw new TypeError('registerRecipe: type must be one of "button", "toggle", "slider", "checkbox", "progress", "knob"');
     }
 
     RECIPES[id] = factory;

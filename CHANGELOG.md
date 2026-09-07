@@ -5,6 +5,58 @@ All notable changes to `@zakkster/lite-ui-fx` are documented here.
 The format follows Keep a Changelog; this project adheres to Semantic
 Versioning.
 
+## [1.5.0] -- 2026-09-07
+
+New native element types (U4a, the first half of roadmap U4). Vol.3 faked
+checkboxes as `role=switch` toggles and knobs/progress meters as sliders; U4a
+promotes them to their true native elements (law 1). Additive: a bare mount of
+any existing recipe is unchanged; 50 -> 53 recipes. Decorate mode is U4b.
+
+### Added
+
+- Three `UIType`s, each wrapping the correct native element: `CHECKBOX`
+  (`<input type=checkbox>`, no `role=switch`; indeterminate via `setValue(null)`,
+  exposed as `state.indeterminate`), `PROGRESS` (native `<progress>`,
+  non-interactive, value written by `setValue`; opt-in `announce` adds a
+  visually-hidden `aria-live=polite` region updated at 10% steps), and `KNOB`
+  (`<input type=range>`, arrow keys native, canvas-side `knobMode`
+  `'rotate' | 'vertical'` pointer mapping).
+- `instance.setValue(v)` / `instance.setChecked(b)`: one call syncs the native
+  element, `state`, any PROGRESS announcer, and fires the recipe hook
+  (`onDrag`/`onToggle`) exactly once (a programmatic write emits no native event).
+- Options `knobMode` (KNOB-only) and `announce` (PROGRESS-only), both validated
+  fail-closed (presence on the wrong type throws).
+- Three recipes, born themed and t3-gated: `TickDraw`, `IndeterminateScan`
+  (CHECKBOX, honouring `state.indeterminate`), `LiquidFill` (PROGRESS). Registered
+  in `RECIPES` / `RECIPE_META` / the default export / a new `UIFXRecipes4` barrel.
+- `decisions/0003-element-types.md`; controller `npm test` coverage for the new
+  types; t2 gains the CHECKBOX-no-switch, PROGRESS-value, KNOB-arrows, and
+  `setValue`/`setChecked`-once contracts (A10-A13).
+
+### Changed
+
+- Eight Vol.3 recipes re-homed onto their true types (rippleCheck/morphCheck ->
+  checkbox; volumeKnob/compassKnob -> knob; ringProgress/batteryGauge/signalMeter/
+  uploadProgress -> progress). Re-home is a `RECIPE_META.type` string change only
+  -- no recipe body touched -- so each renders byte-identical to 1.4.0 (proven by
+  `git diff`); new types keep the donor's default geometry (checkbox 64x36,
+  knob/progress 200x28).
+- The mount type guard and `registerRecipe` both derive their valid-type set from
+  `UIType`, so the controller, the registry, and the d.ts cannot drift as types
+  are added; an unknown type still throws (fail closed).
+- Torture: `makeChurn` drives the new types (checkbox like toggle + sweeps
+  indeterminate, knob like slider, progress sweeps value with no hook); t0/t5
+  synthetic batches iterate all six types; the t3 tier now gates 53 recipes
+  (default AND themed). `npm test` 164 pass; torture `gc major=0`, `alloc=0 B/op`.
+- Docs (`llms.txt`, `README.md`, both `.d.ts`) updated to 53 recipes and the new
+  types / options / methods.
+
+### Fixed
+
+- The Vol.3 semantic mis-mounts: a checkbox is no longer announced as a switch
+  (WCAG role match), and progress meters are non-interactive rather than
+  user-draggable sliders.
+
 ## [1.4.0] -- 2026-09-07
 
 The theming pass (U3b), completing U3's third finding (U-06). One option

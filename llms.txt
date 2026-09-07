@@ -1,7 +1,7 @@
 # @zakkster/lite-ui-fx
-> Canvas-hijacked UI components with pluggable recipe system. 50 built-in recipes.
+> Canvas-hijacked UI components with pluggable recipe system. 53 built-in recipes.
 
-VERSION 1.4.0
+VERSION 1.5.0
 
 ## Install
 npm i @zakkster/lite-ui-fx
@@ -14,7 +14,7 @@ Recipe = { tick(), init?(), onHover?(), onClick?(), onToggle?(), onDrag?(), dest
 ## Import -- Controller
 import { mountUIFX, UIType } from '@zakkster/lite-ui-fx';
 
-## Import -- Recipes (one ./recipes subpath, 50 total, tree-shakeable)
+## Import -- Recipes (one ./recipes subpath, 53 total, tree-shakeable)
 import { SwarmToggle, MagneticButton, SparkSlider } from '@zakkster/lite-ui-fx/recipes';
 import { PendulumToggle, HeartbeatButton, AuroraSlider } from '@zakkster/lite-ui-fx/recipes';
 import { VolumeKnob, WaterLevel, TimerCountdown } from '@zakkster/lite-ui-fx/recipes';
@@ -26,7 +26,9 @@ import { RECIPES, RECIPE_META, RECIPE_NAMES, registerRecipe, mountRecipe } from 
 
 ## Mount
 const instance = mountUIFX(container, UIType.TOGGLE, SwarmToggle, { label: 'Sound' });
-instance.destroy(); // cleanup
+instance.setValue(v);   // SLIDER/KNOB/PROGRESS: v in 0..1 (fires onDrag once); CHECKBOX: setValue(null) = indeterminate
+instance.setChecked(b); // TOGGLE/CHECKBOX: set checked (fires onToggle once)
+instance.destroy();     // cleanup
 
 ## Options (4th arg; unknown option or recipe-hook keys throw a did-you-mean -- fail closed)
 width, height, padding=40, label   // geometry + accessible label
@@ -38,16 +40,21 @@ colors    // string[] palette override; wins over theme (array-palette recipes: 
 theme     // { light, mid, dark } -> accent/dim/surface; partial or wrong-shape throws
 text      // visible canvas label; falls back to label, then the recipe default (label-in-name)
 font      // canvas font string; falls back to the recipe's historical font
+knobMode  // KNOB only: 'rotate' | 'vertical' pointer mapping (default 'rotate'); wrong type throws
+announce  // PROGRESS only: opt-in aria-live announcements at 10% steps; wrong type throws
 
 ## Element Types
-UIType.TOGGLE -> <input type="checkbox" role="switch"> -> state.toggled, onToggle(checked)
-UIType.BUTTON -> <button> -> state.active, onClick(x, y, state)
-UIType.SLIDER -> <input type="range"> -> state.val (0-1), onDrag(val, velocity)
+UIType.TOGGLE   -> <input type="checkbox" role="switch"> -> state.toggled, onToggle(checked)
+UIType.BUTTON   -> <button> -> state.active, onClick(x, y, state)
+UIType.SLIDER   -> <input type="range"> -> state.val (0-1), onDrag(val, velocity)
+UIType.CHECKBOX -> <input type="checkbox"> (no role=switch) -> state.toggled + state.indeterminate, onToggle(checked)
+UIType.PROGRESS -> <progress> (non-interactive) -> state.val, driven by instance.setValue
+UIType.KNOB     -> <input type="range"> -> state.val, arrows native + knobMode pointer map, onDrag(val, velocity)
 
 ## State Object (provided to tick every frame)
-{ hover, active, focused, toggled, disabled, val, w, h, padding, dpr }
+{ hover, active, focused, toggled, indeterminate, disabled, val, w, h, padding, dpr }
 
-## 50 Built-in Recipes
+## 53 Built-in Recipes
 
 ### Vol. 1 -- 10 recipes
 Toggles: SwarmToggle, LiquidToggle, NeonPulseToggle
@@ -72,6 +79,10 @@ Mood: DayNightToggle, ReactionPicker, NotificationBell
 Feedback: TypewriterField, SoundWaveBtn, UploadProgress
 Fun: ScratchReveal, TimerCountdown, PullRefresh
 
+### U4a -- 3 recipes (new element types)
+Checkboxes (UIType.CHECKBOX): TickDraw, IndeterminateScan
+Progress (UIType.PROGRESS): LiquidFill
+
 ## Writing Custom Recipes
 See UIFX-RECIPE-GUIDE.md (included in package).
 
@@ -87,8 +98,10 @@ See UIFX-RECIPE-GUIDE.md (included in package).
 - Zero-GC in all built-in recipes: const colors + globalAlpha, precomputed
   color/label LUTs, fixed preallocated particle pools, gradients built in init.
   Gated per recipe by the t3-frame-alloc torture tier (default AND themed mount).
-- Themeable: all 50 recipes honour { colors, theme:{light,mid,dark}, text, font },
+- Themeable: all 53 recipes honour { colors, theme:{light,mid,dark}, text, font },
   resolved once in init (zero per-frame alloc). RECIPE_META.themeable is true for
-  all 50; motionSafe stays false (reduced motion is a later pass). A bare mount is
+  all 53; motionSafe stays false (reduced motion is a later pass). A bare mount is
   byte-identical to pre-theming. Shipped palettes + APCA contrast are authored with
   @zakkster/lite-hueforge (a dev-only tool, never a runtime dependency).
+- U4a element types: CHECKBOX (indeterminate), PROGRESS (setValue-driven, aria-live
+  opt-in), KNOB (knobMode pointer map); setValue/setChecked sync native+state+hook once.
