@@ -15,12 +15,16 @@
 //   validation-bypass -- a frame stepped over an UNVALIDATED ()=>({}) recipe (no
 //                        mount guard) throws on the missing tick. Proves the t1
 //                        mount guard is load-bearing.
+//   decorate-host-mutation -- a decoration whose recipe MUTATES the host (writes
+//                        an attribute + style) instead of only painting its
+//                        overlay. The t0 decorate DOM-diff asserts the host is
+//                        byte-identical except the overlay, so it MUST catch this.
 //
 // If a control does NOT trip its gate, the gate is decorative -- torture.mjs
 // treats that as its own failure.
 
 import {
-    mountUIFX, UIType, makeContainer, raf, settle, makeTracker, NOOP_CLEANUP,
+    mountUIFX, decorateUIFX, UIType, makeContainer, raf, settle, makeTracker, NOOP_CLEANUP,
     EventStub, makeFrame,
 } from './harness.mjs';
 import { GcProfiler, checkNoGc } from '@zakkster/lite-gc-profiler';
@@ -153,4 +157,37 @@ export async function runValidationBypassControl() {
     }
     // Correct when it THROWS (the guard the mount path adds is load-bearing).
     return { failed: threw, error };
+}
+
+// ---------------------------------------------------------------------------
+//  decorate-host-mutation -- a decoration that mutates the HOST, not just paint
+// ---------------------------------------------------------------------------
+
+// A decoration must only paint its overlay; the host is additive-only and
+// restored byte-identical on destroy (decisions/0004). This BAD decoration
+// reaches out and writes a host attribute + style in init. The t0 decorate
+// DOM-diff (host attrs + style unchanged) MUST catch it -- the control is correct
+// precisely when the host mutation is DETECTABLE.
+export async function runDecorateHostMutationControl() {
+    const container = makeContainer();
+    const host = document.createElement('input');
+    host.offsetWidth = 200; host.offsetHeight = 28;
+    container.appendChild(host);
+    const attrsBefore = host._attrs.size;
+    const styleBefore = Object.keys(host.style).length;
+
+    const inst = decorateUIFX(host, () => ({
+        init() {
+            host.setAttribute('data-decorated', '1');
+            host.style.outline = '2px solid red';
+        },
+        tick() {},
+    }));
+
+    const mutated = host._attrs.size !== attrsBefore ||
+        Object.keys(host.style).length !== styleBefore;
+    inst.destroy();
+    container.removeChild(host);
+    // Correct when the mutation is DETECTABLE (a t0 host-byte-identical diff fails).
+    return { failed: mutated, attrsDelta: host._attrs.size - attrsBefore };
 }

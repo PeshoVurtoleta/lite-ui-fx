@@ -14,7 +14,7 @@
 
 import assert from 'node:assert/strict';
 import {
-    mountUIFX, UIType, makeContainer, headChildCount, raf,
+    mountUIFX, decorateUIFX, UIType, makeContainer, headChildCount, raf,
     RECIPES, RECIPE_META,
 } from './harness.mjs';
 
@@ -79,6 +79,41 @@ export async function runT0() {
             return r;
         };
 
+        // Decorate DOM-diff tier (U4b): a decoration mounts AROUND a live host via
+        // decorateUIFX (not mountUIFX, which rejects 'decorate'). Assert the host is
+        // byte-identical before and after (no style write, no attribute, no
+        // reparent) and the overlay is added as a sibling then fully removed.
+        if (m.type === 'decorate') {
+            const host = document.createElement('input');
+            host.offsetWidth = 200; host.offsetHeight = 28;
+            container.appendChild(host);
+            const childrenBefore = container.children.length;   // host included
+            const attrsBefore = host._attrs.size;
+            const styleKeysBefore = Object.keys(host.style).length;
+
+            const inst = decorateUIFX(host, factory);
+            assert.equal(inst.el, host, m.id + ' decorate returns the host el');
+            assert.equal(container.children.length, childrenBefore + 1, m.id + ' overlay added as a sibling');
+
+            pump(4);
+            inst.state.focused = true; inst.state.valid = false; inst.state.text = 'Ab7$k9';
+            pump(4);
+            inst.state.valid = true; inst.state.text = 'Ab7$k9mQ!';
+            pump(2);
+
+            inst.destroy();
+            inst.destroy(); // idempotent
+            if (hadDestroy) assert.equal(destroyCount, 1, m.id + ' recipe.destroy called exactly once');
+            assert.equal(host.parentNode, container, m.id + ' host still in place after destroy');
+            assert.equal(host._attrs.size, attrsBefore, m.id + ' host attributes untouched (additive-only)');
+            assert.equal(Object.keys(host.style).length, styleKeysBefore, m.id + ' host style untouched');
+            assert.equal(container.children.length, childrenBefore, m.id + ' overlay removed on destroy');
+            assert.equal(raf.pending(), 0, m.id + ' raf pending returns to 0');
+            container.removeChild(host);
+            mounted++;
+            continue;
+        }
+
         const inst = mountUIFX(container, m.type, factory);
         assert.equal(container.children.length, 1, m.id + ' wrapper mounted');
         assert.equal(inst.wrapper.parentNode, container, m.id + ' wrapper in container');
@@ -108,7 +143,7 @@ export async function runT0() {
     const metaStyleDelta = headChildCount() - metaHeadBefore;
     assert.equal(metaStyleDelta, 0, 'meta batch nets ZERO into document.head');
     assert.equal(mounted, RECIPE_META.length, 'every RECIPE_META row mounted');
-    assert.equal(mounted, 53, 'all 53 recipes exercised');
+    assert.equal(mounted, 56, 'all 56 recipes exercised');
 
     return { styleDelta, mounted };
 }

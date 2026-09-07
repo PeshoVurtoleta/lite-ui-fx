@@ -21,7 +21,7 @@ https://cdpn.io/pen/debug/yyaPKpB
 ## Live Demo (UI-FX vol3.)
 https://cdpn.io/pen/debug/YPGEaYY
 
-**53 recipes** across UI element categories:
+**56 recipes** across UI element categories:
 
 - **Toggles** -- Swarm, Liquid, Neon Pulse, Pendulum, Circuit, Lightning, DNA
 - **Buttons** -- Magnetic, Shatter, Confetti, Glitch, Heartbeat, Breathing, Ink Splash, Pixel Dissolve, Firework
@@ -29,18 +29,19 @@ https://cdpn.io/pen/debug/YPGEaYY
 - **Knobs** -- Volume dial, Compass needle
 - **Progress** -- Ring, Battery, Signal meter, Liquid Fill
 - **Controls** -- Pill tabs, Stepper, Radio orbit
-- **Indicators** -- Password strength, Water level, Heat map
+- **Indicators** -- Water level, Heat map
 - **Mood** -- Day/night, Reaction picker, Notification bell
-- **Feedback** -- Typewriter, Sound wave, Upload progress
+- **Feedback** -- Sound wave, Upload progress
 - **Fun** -- Scratch reveal, Timer countdown, Pull refresh
 - **Checkboxes** -- Ripple, Morph (X to check), Tick Draw, Indeterminate Scan
 - **Loaders** -- Orbit planets, DNA helix
 - **Counters** -- Flame heat, Glitch signal
 - **Rating** -- Bubble inflate
+- **Form (decorate)** -- Focus halo, Error shake, Success bloom, Password strength, Typewriter field (mounted via `decorateUIFX`, around a live element)
 
 Every recipe is zero-GC, uses `dt`-based animation, and includes accessibility indicators (focus rings, state labels).
 
-All 53 recipes ship in the package on the `./recipes` subpath -- versioned,
+All 56 recipes ship in the package on the `./recipes` subpath -- versioned,
 typed, and tree-shakeable. With `sideEffects: false`, importing one recipe pulls
 in only that recipe, so a controller-only install stays tiny.
 
@@ -65,7 +66,7 @@ Part of the [@zakkster/lite-*](https://www.npmjs.com/org/zakkster) ecosystem.
 npm i @zakkster/lite-ui-fx
 ```
 
-> The 53 recipes ship in the same package on the `./recipes` subpath and
+> The 56 recipes ship in the same package on the `./recipes` subpath and
 > tree-shake, so importing one adds only that one.
 
 
@@ -97,7 +98,7 @@ instance.destroy();
 // Controller (always needed)
 import { mountUIFX, UIType } from '@zakkster/lite-ui-fx';
 
-// All 53 recipes ship on the ./recipes subpath (tree-shakeable) -- import by name:
+// All 56 recipes ship on the ./recipes subpath (tree-shakeable) -- import by name:
 import { SwarmToggle, MagneticButton, SparkSlider } from '@zakkster/lite-ui-fx/recipes';
 import { PendulumToggle, HeartbeatButton, RippleCheck } from '@zakkster/lite-ui-fx/recipes';
 import { VolumeKnob, WaterLevel, TimerCountdown } from '@zakkster/lite-ui-fx/recipes';
@@ -158,6 +159,36 @@ Returns `{ el, canvas, wrapper, state, setValue(v), setChecked(b), destroy() }`.
 - `setChecked(b)` -- TOGGLE/CHECKBOX: set checked (updates the element +
   `state.toggled`, fires `onToggle` once).
 
+### `decorateUIFX(el, recipeFactory, options?)` -- the second mount mode
+
+Where `mountUIFX` **hijacks** (creates a hidden native element under a canvas),
+`decorateUIFX` **decorates**: it positions a canvas *around* an existing, visible
+element without hijacking it -- no `opacity:0`, no reparenting. The overlay is a
+sibling placed from the host's offset box and removed on `destroy()`, so the host
+is byte-identical before and after. Recipe `state` is wired from the host's own
+events; for a form-control host, `state.text` and `state.valid` mirror `el.value`
+and `el.validity` (read at event time, never per frame). This is the honest home
+for a decoration over a real input.
+
+```javascript
+import { decorateUIFX } from '@zakkster/lite-ui-fx';
+import { PasswordStrength } from '@zakkster/lite-ui-fx/recipes';
+
+const input = document.querySelector('#password');
+const deco = decorateUIFX(input, PasswordStrength, { theme });
+// ... input stays fully usable; the meter tracks what the user types ...
+deco.destroy(); // removes ONLY the overlay; the input is untouched
+```
+
+`options` is a subset: `padding`, `seed`, `colors`, `theme`, `text`, `font`. The
+hijack-only keys (`width`/`height`/`value`/`checked`/`disabled`/`knobMode`/
+`announce`/`label`) throw in decorate mode. Returns
+`{ el, canvas, state, setValue, setChecked, destroy() }`, where `setValue` and
+`setChecked` are hijack-only and throw (a decoration reflects the host; it does
+not drive it). Built-in decorate recipes: `FocusHalo`, `ErrorShake`,
+`SuccessBloom`, `PasswordStrength`, `TypewriterField` (`RECIPE_META.type` =
+`'decorate'`, so `mountRecipe(el, id)` routes them here automatically).
+
 ### Element Types
 
 | Type | Native Element | Recipe Hooks | Key State |
@@ -168,6 +199,10 @@ Returns `{ el, canvas, wrapper, state, setValue(v), setChecked(b), destroy() }`.
 | `UIType.CHECKBOX` | `<input type="checkbox">` (no `role=switch`) | `onToggle(checked)` | `state.toggled`, `state.indeterminate` |
 | `UIType.PROGRESS` | `<progress>` (non-interactive) | (driven by `setValue`) | `state.val` (0-1) |
 | `UIType.KNOB` | `<input type="range">` | `onDrag(val, velocity)` | `state.val` (0-1) |
+| *(decorate)* | none -- a canvas AROUND a live host (`decorateUIFX`) | host events -> state | `state.focused`, `state.text`, `state.valid` |
+
+*(decorate)* is a mount mode, not a `UIType`: it creates no native element. A recipe
+with `RECIPE_META.type === 'decorate'` is mounted via `decorateUIFX`.
 
 ### State Object (provided to `tick()` every frame)
 
@@ -184,6 +219,8 @@ Returns `{ el, canvas, wrapper, state, setValue(v), setChecked(b), destroy() }`.
     h: number;           // Element height
     padding: number;     // Canvas padding
     dpr: number;         // Device pixel ratio
+    text?: string;       // decorate mode only: the host value string
+    valid?: boolean;     // decorate mode only: the host validity
 }
 ```
 
@@ -194,7 +231,7 @@ Returns `{ el, canvas, wrapper, state, setValue(v), setChecked(b), destroy() }`.
 | Framer Motion | ~45 KB | React HOC | 0 | Via React | `npm i framer-motion` |
 | GSAP | ~25 KB | Timeline | 0 | Manual | `npm i gsap` |
 | Lottie | ~55 KB | JSON animation | After Effects | Manual | `npm i lottie-web` |
-| **lite-ui-fx** | **< 5 KB** | **Canvas hijack** | **53 built-in** | **Native + visual** | **`npm i @zakkster/lite-ui-fx`** |
+| **lite-ui-fx** | **< 5 KB** | **Canvas hijack + decorate** | **56 built-in** | **Native + visual** | **`npm i @zakkster/lite-ui-fx`** |
 
 ## Writing Custom Recipes
 
@@ -227,6 +264,7 @@ export function MyButton() {
 Full TypeScript declarations are included for:
 
 - `mountUIFX`
+- `decorateUIFX` (+ `DecorateOptions`, `DecorateInstance`)
 - `UIType`
 - `UIFXState`
 - `UIFXPointer`

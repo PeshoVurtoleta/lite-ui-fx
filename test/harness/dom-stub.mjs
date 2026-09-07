@@ -3,12 +3,14 @@
 // Adapted from ../LiteAmbientFX/test/_helpers/dom-stub.mjs. Not jsdom. Zero deps.
 // ASCII-only.
 //
-// Covers exactly what UIFXController.js and the 53 recipes touch:
+// Covers exactly what UIFXController.js and the 56 recipes touch:
 //   document.createElement (div/button/input/canvas/style), appendChild/remove,
 //   children tracking, document.head child tracking, el.style object,
 //   setAttribute/getAttribute, classList, checkbox .checked + range .value,
 //   addEventListener(type, fn, { signal }) honouring AbortSignal, dispatchEvent,
-//   getBoundingClientRect() (zeros), canvas.getContext('2d') recording context.
+//   getBoundingClientRect() (zeros), canvas.getContext('2d') recording context,
+//   plus decorate mode (U4b): insertBefore/nextSibling sibling ops + a writable
+//   offset box (offsetLeft/Top/Width/Height) so decorateUIFX can place its overlay.
 
 // ---------------------------------------------------------------------------
 //  Recording 2D context (records every call + property write into a flat log)
@@ -105,6 +107,29 @@ class ElementStub {
         this._children = [];
         this.parentNode = null;
         this._listeners = new Map(); // type -> Set<{ fn }>
+        // Offset box: decorateUIFX places its overlay from el.offsetLeft/Top/
+        // Width/Height (a sibling shares el's offsetParent). Node has no layout,
+        // so these are plain writable props a test sets to give a host real dims.
+        this.offsetLeft = 0;
+        this.offsetTop = 0;
+        this.offsetWidth = 0;
+        this.offsetHeight = 0;
+    }
+    // Sibling insertion (decorateUIFX inserts its overlay right after the host:
+    // el.parentNode.insertBefore(canvas, el.nextSibling)). A null ref appends.
+    insertBefore(newNode, refNode) {
+        newNode.parentNode = this;
+        if (refNode == null) { this._children.push(newNode); return newNode; }
+        const i = this._children.indexOf(refNode);
+        if (i < 0) this._children.push(newNode);
+        else this._children.splice(i, 0, newNode);
+        return newNode;
+    }
+    get nextSibling() {
+        const p = this.parentNode;
+        if (!p) return null;
+        const i = p._children.indexOf(this);
+        return (i >= 0 && i + 1 < p._children.length) ? p._children[i + 1] : null;
     }
     setAttribute(k, v) { this._attrs.set(k, String(v)); }
     getAttribute(k) { return this._attrs.has(k) ? this._attrs.get(k) : null; }

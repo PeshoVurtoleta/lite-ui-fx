@@ -22,8 +22,15 @@ function baseState() {
     return {
         hover: false, active: false, focused: false, toggled: false, indeterminate: false,
         val: 0.5, w: 160, h: 48, padding: 40, dpr: 1,
+        // Decorate-mode fields (U4b): a form-control host's value + validity.
+        text: '', valid: true,
     };
 }
+
+// Prebuilt host-text samples (built ONCE at module load) of increasing length +
+// character diversity. The decorate churn references them by index so it never
+// allocates a string itself -- any bytes the gate sees are the recipe's.
+const TEXTS = ['', 'a', 'ab7', 'Ab7$k', 'Ab7$k9mQ', 'Ab7$k9mQ!zL2'];
 
 // Mutate state in place and fire the type's interaction hook periodically. The
 // driver allocates nothing itself, so any bytes the gate sees are the recipe's.
@@ -33,6 +40,7 @@ function baseState() {
 function makeChurn(type) {
     const valued = type === 'slider' || type === 'knob' || type === 'progress';
     const toggled = type === 'toggle' || type === 'checkbox';
+    const decorate = type === 'decorate';
     return function churn(recipe, st, ptr, i) {
         if ((i & 15) === 0) { st.hover = true; if (recipe.onHover) recipe.onHover(st, ptr); }
         else if ((i & 15) === 8) { st.hover = false; if (recipe.onLeave) recipe.onLeave(st, ptr); }
@@ -44,6 +52,14 @@ function makeChurn(type) {
         } else if (toggled) {
             st.indeterminate = type === 'checkbox' && (i & 31) < 8;  // exercise both branches
             if ((i & 15) === 0) { st.toggled = !st.toggled; if (recipe.onToggle) recipe.onToggle(st.toggled, st); }
+        } else if (decorate) {
+            // focus is swept above (FocusHalo). Cycle the host text through the
+            // prebuilt strings (no alloc) so PasswordStrength rescans + Typewriter-
+            // Field grows, and flip validity to drive the ErrorShake/SuccessBloom
+            // false<->true edges. A decoration fires NO onToggle/onDrag (it has no
+            // native control -- decisions/0004), so none is called here.
+            st.text = TEXTS[(i >> 3) % TEXTS.length];
+            st.valid = (i & 63) < 40;
         } else { // button
             if ((i & 11) === 0) { st.active = true; if (recipe.onClick) recipe.onClick(ptr.x, ptr.y, st); }
             else if ((i & 11) === 6) { st.active = false; }

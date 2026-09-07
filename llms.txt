@@ -1,7 +1,7 @@
 # @zakkster/lite-ui-fx
-> Canvas-hijacked UI components with pluggable recipe system. 53 built-in recipes.
+> Canvas-hijacked UI components with pluggable recipe system. 56 built-in recipes.
 
-VERSION 1.5.0
+VERSION 1.6.0
 
 ## Install
 npm i @zakkster/lite-ui-fx
@@ -12,9 +12,9 @@ Canvas overlay (z-index:1) renders visuals via a recipe factory function.
 Recipe = { tick(), init?(), onHover?(), onClick?(), onToggle?(), onDrag?(), destroy?() }
 
 ## Import -- Controller
-import { mountUIFX, UIType } from '@zakkster/lite-ui-fx';
+import { mountUIFX, decorateUIFX, UIType } from '@zakkster/lite-ui-fx';
 
-## Import -- Recipes (one ./recipes subpath, 53 total, tree-shakeable)
+## Import -- Recipes (one ./recipes subpath, 56 total, tree-shakeable)
 import { SwarmToggle, MagneticButton, SparkSlider } from '@zakkster/lite-ui-fx/recipes';
 import { PendulumToggle, HeartbeatButton, AuroraSlider } from '@zakkster/lite-ui-fx/recipes';
 import { VolumeKnob, WaterLevel, TimerCountdown } from '@zakkster/lite-ui-fx/recipes';
@@ -24,11 +24,23 @@ import { RECIPES, RECIPE_META, RECIPE_NAMES, registerRecipe, mountRecipe } from 
 // RECIPES id->factory (null-proto); RECIPE_META { id, name, type, family, themeable, motionSafe }; RECIPE_NAMES frozen.
 // mountRecipe(container, id, options?): resolves id fail-closed (did-you-mean), asserts META.type, mounts.
 
-## Mount
+## Mount -- two modes
+// HIJACK (mountUIFX): creates a native element (opacity:0) inside `container` and
+// paints a canvas over it. The native element owns events + a11y.
 const instance = mountUIFX(container, UIType.TOGGLE, SwarmToggle, { label: 'Sound' });
 instance.setValue(v);   // SLIDER/KNOB/PROGRESS: v in 0..1 (fires onDrag once); CHECKBOX: setValue(null) = indeterminate
 instance.setChecked(b); // TOGGLE/CHECKBOX: set checked (fires onToggle once)
 instance.destroy();     // cleanup
+// DECORATE (decorateUIFX): a canvas AROUND an EXISTING visible element -- no
+// native element created, no opacity:0, host never reparented; the overlay is a
+// sibling placed from the host's offset box, removed on destroy (host byte-
+// identical). State is wired from the host's own events; for a form-control host
+// state.text/state.valid mirror el.value/el.validity (read at event time). This
+// is the home for a decoration over a real input.
+const deco = decorateUIFX(inputEl, PasswordStrength, { theme });
+deco.destroy();         // removes ONLY the overlay + its listeners; host untouched
+// setValue/setChecked are HIJACK-ONLY: they throw in decorate mode (a decoration
+// reflects the host; it does not drive it).
 
 ## Options (4th arg; unknown option or recipe-hook keys throw a did-you-mean -- fail closed)
 width, height, padding=40, label   // geometry + accessible label
@@ -42,6 +54,9 @@ text      // visible canvas label; falls back to label, then the recipe default 
 font      // canvas font string; falls back to the recipe's historical font
 knobMode  // KNOB only: 'rotate' | 'vertical' pointer mapping (default 'rotate'); wrong type throws
 announce  // PROGRESS only: opt-in aria-live announcements at 10% steps; wrong type throws
+// decorateUIFX accepts a SUBSET: padding, seed, colors, theme, text, font. The
+// hijack-only keys (width/height/value/checked/disabled/knobMode/announce/label)
+// throw in decorate mode -- geometry comes from the host, value is read from it.
 
 ## Element Types
 UIType.TOGGLE   -> <input type="checkbox" role="switch"> -> state.toggled, onToggle(checked)
@@ -50,11 +65,14 @@ UIType.SLIDER   -> <input type="range"> -> state.val (0-1), onDrag(val, velocity
 UIType.CHECKBOX -> <input type="checkbox"> (no role=switch) -> state.toggled + state.indeterminate, onToggle(checked)
 UIType.PROGRESS -> <progress> (non-interactive) -> state.val, driven by instance.setValue
 UIType.KNOB     -> <input type="range"> -> state.val, arrows native + knobMode pointer map, onDrag(val, velocity)
+(decorate)      -> NO native element created; a canvas AROUND a live host (decorateUIFX). Not a UIType --
+                   RECIPE_META.type 'decorate' routes mountRecipe to decorateUIFX. State: focused + text + valid.
 
 ## State Object (provided to tick every frame)
 { hover, active, focused, toggled, indeterminate, disabled, val, w, h, padding, dpr }
+// decorate mode adds: text (host value string), valid (host validity boolean).
 
-## 53 Built-in Recipes
+## 56 Built-in Recipes
 
 ### Vol. 1 -- 10 recipes
 Toggles: SwarmToggle, LiquidToggle, NeonPulseToggle
@@ -83,6 +101,11 @@ Fun: ScratchReveal, TimerCountdown, PullRefresh
 Checkboxes (UIType.CHECKBOX): TickDraw, IndeterminateScan
 Progress (UIType.PROGRESS): LiquidFill
 
+### U4b -- 3 recipes (decorate mode: a canvas AROUND a live element)
+Form feedback (decorateUIFX): FocusHalo, ErrorShake, SuccessBloom
+// Re-homed to decorate mode (type 'decorate'): PasswordStrength (reads the live
+// input's text), TypewriterField (an underline that grows with the typed text).
+
 ## Writing Custom Recipes
 See UIFX-RECIPE-GUIDE.md (included in package).
 
@@ -98,10 +121,15 @@ See UIFX-RECIPE-GUIDE.md (included in package).
 - Zero-GC in all built-in recipes: const colors + globalAlpha, precomputed
   color/label LUTs, fixed preallocated particle pools, gradients built in init.
   Gated per recipe by the t3-frame-alloc torture tier (default AND themed mount).
-- Themeable: all 53 recipes honour { colors, theme:{light,mid,dark}, text, font },
+- Themeable: all 56 recipes honour { colors, theme:{light,mid,dark}, text, font },
   resolved once in init (zero per-frame alloc). RECIPE_META.themeable is true for
-  all 53; motionSafe stays false (reduced motion is a later pass). A bare mount is
+  all 56; motionSafe stays false (reduced motion is a later pass). A bare mount is
   byte-identical to pre-theming. Shipped palettes + APCA contrast are authored with
   @zakkster/lite-hueforge (a dev-only tool, never a runtime dependency).
 - U4a element types: CHECKBOX (indeterminate), PROGRESS (setValue-driven, aria-live
   opt-in), KNOB (knobMode pointer map); setValue/setChecked sync native+state+hook once.
+- U4b decorate mode (decorateUIFX): a canvas AROUND a live element -- no hijack, no
+  opacity:0, host never reparented; the overlay is a sibling placed from the host's
+  offset box and removed on destroy (host byte-identical, additive-only). State is
+  wired from the host's own events (state.text/state.valid at event time). It is the
+  second mount mode + the surface the enrichment decorations build on.

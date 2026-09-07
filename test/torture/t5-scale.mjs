@@ -14,14 +14,17 @@
 
 import assert from 'node:assert/strict';
 import { setMaxListeners } from 'node:events';
-import { mountUIFX, UIType, makeContainer, raf } from './harness.mjs';
+import { mountUIFX, decorateUIFX, UIType, makeContainer, raf } from './harness.mjs';
 
 const N = 100;
 const BAD = 50;   // the component whose recipe throws mid-soak
 const K = 5;      // frames the bad component survives before it throws
 const FRAMES = K + 10;
 
-const TYPES = [UIType.BUTTON, UIType.TOGGLE, UIType.SLIDER, UIType.CHECKBOX, UIType.PROGRESS, UIType.KNOB];
+// Six native (hijack) types plus 'decorate' -- proving a decoration rides the
+// SAME shared ticker / RAF chain and the same quarantine as a hijack mount. BAD
+// (50 % 7 = 1) is a hijack TOGGLE, so the quarantine assertions stay uniform.
+const MODES = [UIType.BUTTON, UIType.TOGGLE, UIType.SLIDER, UIType.CHECKBOX, UIType.PROGRESS, UIType.KNOB, 'decorate'];
 
 export async function runT5() {
     const container = makeContainer();
@@ -50,7 +53,15 @@ export async function runT5() {
                 }
             },
         });
-        insts[idx] = mountUIFX(container, TYPES[idx % TYPES.length], factory);
+        const mode = MODES[idx % MODES.length];
+        if (mode === 'decorate') {
+            const host = document.createElement('input');
+            host.offsetWidth = 120; host.offsetHeight = 28;
+            container.appendChild(host);
+            insts[idx] = decorateUIFX(host, factory);
+        } else {
+            insts[idx] = mountUIFX(container, mode, factory);
+        }
     }
 
     // Single-RAF invariant: all N components ride ONE shared Ticker, so exactly

@@ -27,9 +27,9 @@ describe('recipe registry + metadata', () => {
         assert.equal(RECIPES['constructor'], undefined);
     });
 
-    it('RECIPE_NAMES is frozen and has 53 entries at load', () => {
+    it('RECIPE_NAMES is frozen and has 56 entries at load', () => {
         assert.equal(Object.isFrozen(RECIPE_NAMES), true);
-        assert.equal(RECIPE_NAMES.length, 53);
+        assert.equal(RECIPE_NAMES.length, 56);
     });
 
     it('every meta row resolves to a factory (bijection at load)', () => {
@@ -119,10 +119,19 @@ describe('recipe registry + metadata', () => {
         // No type, no prior entry -> throw, and RECIPES must NOT be mutated.
         assert.throws(() => registerRecipe('noType', () => ({ tick() {} })), TypeError);
         assert.equal(RECIPES.noType, undefined, 'rejected registration must not mutate RECIPES');
-        // An explicit but invalid type -> throw ('gauge' is not a UIType; knob
-        // and progress became real in U4a, so the example must stay unreal).
+        // An explicit but invalid type -> throw ('gauge' is not a UIType; knob and
+        // progress became real in U4a, and 'decorate' became a valid routing tag in
+        // U4b, so the invalid example must stay unreal).
         assert.throws(() => registerRecipe('gaugey', () => ({ tick() {} }), { type: 'gauge' }), TypeError);
         assert.equal(RECIPES.gaugey, undefined);
+    });
+
+    it("accepts 'decorate' as a valid type (U4b routing tag), then restores", () => {
+        // decisions/0004: 'decorate' is the one non-UIType tag VALID_META_TYPES admits.
+        function Deco() { return { tick() {} }; }
+        registerRecipe('decoTest', Deco, { type: 'decorate' });
+        const meta = RECIPE_META.find((m) => m.id === 'decoTest');
+        assert.ok(meta && meta.type === 'decorate', "registerRecipe accepts type 'decorate'");
     });
 });
 
@@ -157,6 +166,21 @@ describe('mountRecipe fail-closed', () => {
         assert.equal(container.children.length, 1);
         inst.destroy();
         assert.equal(container.children.length, 0);
+    });
+
+    it("a 'decorate' recipe routes through decorateUIFX (mounted AROUND the host, not inside it)", () => {
+        // For a decorate recipe, mountRecipe's first arg is the LIVE host to
+        // decorate; the overlay is added as a sibling, not a child of the host.
+        const host = document.createElement('input');
+        host.offsetWidth = 200; host.offsetHeight = 28;
+        container.appendChild(host);
+        const before = container.children.length;    // host present
+        const inst = mountRecipe(host, 'focusHalo');
+        assert.equal(inst.el, host, 'decorate returns the host element');
+        assert.equal(container.children.length, before + 1, 'overlay added as a sibling of the host');
+        inst.destroy();
+        assert.equal(container.children.length, before, 'overlay removed on destroy (host untouched)');
+        assert.equal(raf.pending(), 0, 'raf pending returns to 0');
     });
 });
 

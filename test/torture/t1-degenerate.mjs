@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import {
-    mountUIFX, UIType, makeContainer, setDpr, raf, RECIPES, RECIPE_META,
+    mountUIFX, decorateUIFX, UIType, makeContainer, setDpr, raf, RECIPES, RECIPE_META,
 } from './harness.mjs';
 
 const counting = () => ({ tick() {} });
@@ -69,6 +69,28 @@ export async function runT1() {
         'undefined type throws naming type',
     );
 
+    // Decorate mode fails closed on its OWN surface (U4b). A canvas AROUND a live
+    // element needs a real, attached host and rejects the hijack-only options;
+    // setValue/setChecked are hijack-only (a decoration reflects the host).
+    assert.throws(() => decorateUIFX(null, counting), /el/,
+        'decorateUIFX(null) throws naming el');
+    assert.throws(() => decorateUIFX(document.createElement('input'), counting), /attached/,
+        'decorateUIFX on a detached el (no parentNode) throws');
+    {
+        const host = document.createElement('input'); container.appendChild(host);
+        assert.throws(() => decorateUIFX(host, counting, { width: 100 }), /hijack-only/,
+            'a hijack-only option (width) throws in decorate mode');
+        assert.throws(() => decorateUIFX(host, counting, { widht: 1 }), /unknown option/,
+            'an unknown decorate option throws (did-you-mean over the decorate set)');
+        assert.throws(() => decorateUIFX(host, () => ({})), /tick/,
+            'a decorate recipe without tick throws at mount naming tick');
+        const inst = decorateUIFX(host, counting);
+        assert.throws(() => inst.setValue(0.5), /hijack-only/, 'decorate setValue throws (hijack-only)');
+        assert.throws(() => inst.setChecked(true), /hijack-only/, 'decorate setChecked throws (hijack-only)');
+        inst.destroy();
+        container.removeChild(host);
+    }
+
     // DECIDED default (not a flip): width 0 is falsy, so `width || typeDefault`
     // resolves to the BUTTON default 160. This is documented behaviour, verified
     // here so a future change to the default resolution is caught.
@@ -95,6 +117,32 @@ export async function runT1() {
     let swept = 0;
     for (const m of RECIPE_META) {
         const base = RECIPES[m.id];
+
+        // Decorate recipes mount AROUND a live host; degenerate geometry comes from
+        // the host's offset box, and decorate rejects width/height so it is not
+        // passed here. State flips exercise focus/valid/text edges.
+        if (m.type === 'decorate') {
+            assert.doesNotThrow(() => {
+                for (const dims of [{ w: 1, h: 1, padding: 0 }, { w: 300, h: 48, padding: 40 }, { w: 4000, h: 2000, padding: 200 }]) {
+                    const host = document.createElement('input');
+                    host.offsetWidth = dims.w; host.offsetHeight = dims.h;
+                    container.appendChild(host);
+                    const inst = decorateUIFX(host, base, { padding: dims.padding });
+                    inst.state.hover = true; inst.state.active = true; inst.state.focused = true;
+                    pump(2);
+                    for (let k = 0; k < 6; k++) {
+                        inst.state.valid = (k & 1) === 0;   // invalid<->valid edges
+                        inst.state.text = (k & 1) ? 'Ab7$k9mQ' : '';
+                        pump(1);
+                    }
+                    inst.destroy();
+                    container.removeChild(host);
+                }
+            }, m.id + ' (decorate) survives degenerate geometry / state flips');
+            swept++;
+            continue;
+        }
+
         assert.doesNotThrow(() => {
             // Degenerate geometry: zero-ish and absurd sizes both construct+run.
             for (const dims of [{ width: 1, height: 1, padding: 0 }, { width: 300, height: 48, padding: 40 }, { width: 4000, height: 2000, padding: 200 }]) {
@@ -121,7 +169,7 @@ export async function runT1() {
         swept++;
     }
     assert.equal(swept, RECIPE_META.length, 'every RECIPE_META row swept');
-    assert.equal(swept, 53, 'all 53 recipes swept through degenerate inputs');
+    assert.equal(swept, 56, 'all 56 recipes swept through degenerate inputs');
     assert.equal(raf.pending(), 0, 't1 degenerate sweep leaves raf pending at 0');
 
     return { swept };

@@ -6,9 +6,9 @@
 // + seed to stderr and exits 1. The GATE diagnostic (leak + gc + alloc numbers)
 // is written to stderr so stdout stays exactly "ok".
 //
-// TORTURE_CONTROL=alloc|listener|double-toggle|validation-bypass activates one
-// deliberately-broken t9 control; that run MUST exit non-zero (the gate proving
-// it can fail).
+// TORTURE_CONTROL=alloc|listener|double-toggle|validation-bypass|
+// decorate-host-mutation activates one deliberately-broken t9 control; that run
+// MUST exit non-zero (the gate proving it can fail).
 //
 // Requires --expose-gc: the retention settle and the gc gate both need it.
 
@@ -78,8 +78,20 @@ if (control) {
         process.exit(2);
     }
 
+    if (control === 'decorate-host-mutation') {
+        const r = await t9.runDecorateHostMutationControl();
+        console.error('control=decorate-host-mutation host-mutated=' + r.failed +
+            ' attrsDelta=' + r.attrsDelta);
+        if (r.failed) {
+            console.error('CONTROL decorate-host-mutation correctly MUTATED the host (t0 diff would fail) (exit 1)');
+            process.exit(1);
+        }
+        console.error('CONTROL decorate-host-mutation did NOT mutate the host -- gate is decorative');
+        process.exit(2);
+    }
+
     console.error('unknown TORTURE_CONTROL: ' + control +
-        ' (want alloc|listener|double-toggle|validation-bypass)');
+        ' (want alloc|listener|double-toggle|validation-bypass|decorate-host-mutation)');
     process.exit(1);
 }
 

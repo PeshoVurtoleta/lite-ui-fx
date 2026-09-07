@@ -1096,3 +1096,36 @@ defect this roadmap exists to remove. And with U8 the package stops being
 an island: lite-headless supplies the behaviour it will never reimplement,
 UIFX supplies the visuals nothing in the vanilla ecosystem matches, and
 the catalog grows along demand that was measured, not guessed.
+
+---
+
+## 8. Element vocabulary gap analysis (2026-09-07)
+
+A full gap analysis of what interactive elements the package does NOT yet paint
+lives in **ROADMAP-ELEMENTS.md**. It maps the union of the lite-headless catalog
+(59 primitives), the W3C ARIA APG pattern index (30 patterns), and four dominant
+kits (React Aria, Radix, Ark UI, shadcn/ui) onto the four delivery vehicles
+(hijack UIType / grouped control / decorate / headless-skin), with copy-paste
+demand triangulated from uiverse.io + Aceternity + Magic UI + React Bits.
+
+Headline: the roadmap already absorbs most of the interactive vocabulary (U7
+groups + the E1/E2/E3 enrichment track). The genuine gaps with no slot yet:
+
+- **dual-thumb / range slider** -- the clearest native-control gap (SLIDER is
+  single-thumb; every kit + APG has multi-thumb). Fold into U7 as a SLIDER variant.
+- **`<select>` / dropdown trigger** -- unslotted; needs a decision (SELECT hijack
+  vs E1 skin of lite-headless combobox/listbox).
+- **E1 skin targets to enumerate** -- carousel, date-picker/calendar, accordion/
+  disclosure, time-picker, tag-input (E1 currently names ~11 of ~59; bound its scope).
+- **Dock (proximity-magnify)** -- a demand-verified E2 pointer decoration not in the
+  current shimmer/trail/glow set; plus confirm text-fx covers `<textarea>`.
+- **loader count + number-ticker** -- uiverse's largest category (~718 loaders)
+  likely under-served by E3's "6"; add an animated stat/ticker recipe.
+- **canvas-native white space** -- signature pad, image cropper, media transport:
+  no kit unifies behaviour + visual, and the canvas IS the control. Post-enrichment
+  candidate; needs a decision (grow a small owned-behaviour lane, or skin via E1).
+
+Everything else in the 59 + APG union is behaviour / overlay / layout / data /
+static display and is routed OUT (lite-headless, lite-table, lite-charts, the fx
+siblings) -- see the OUT ledger in ROADMAP-ELEMENTS.md. Re-verify demand before
+reprioritising, not before building.

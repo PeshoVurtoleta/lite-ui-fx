@@ -27,6 +27,11 @@ export interface UIFXState {
     h: number;
     padding: number;
     dpr: number;
+    /** Decorate mode only (decorateUIFX): the host form-control's current value.
+     *  Absent for hijack mounts and for a non-form host (then ''). */
+    text?: string;
+    /** Decorate mode only: the host's validity (el.validity.valid, else true). */
+    valid?: boolean;
 }
 
 export interface UIFXPointer {
@@ -86,6 +91,22 @@ export interface MountOptions {
     announce?: boolean;
 }
 
+/**
+ * Options accepted by decorateUIFX. A subset of MountOptions: a decoration
+ * inherits the host's geometry (offset box) and value (read from the host), so
+ * the hijack-only options (width/height/value/checked/disabled/knobMode/announce/
+ * label) are rejected -- passing one throws (fail closed).
+ */
+export interface DecorateOptions {
+    /** Overlay padding around the host, in px (default 40). */
+    padding?: number;
+    seed?: number;
+    colors?: string[];
+    theme?: { light: string; mid: string; dark: string };
+    text?: string;
+    font?: string;
+}
+
 export interface UIFXInstance {
     el: HTMLElement;
     canvas: HTMLCanvasElement;
@@ -116,5 +137,42 @@ export declare function mountUIFX(
     recipeFactory: RecipeFactory,
     options?: MountOptions
 ): UIFXInstance;
+
+/**
+ * The instance returned by decorateUIFX. Like UIFXInstance but WITHOUT `wrapper`
+ * (there is none -- the overlay is a sibling of the host, not a wrapper around
+ * it), and setValue/setChecked are hijack-only: a decoration reflects the host,
+ * it does not drive it, so both throw.
+ */
+export interface DecorateInstance {
+    /** The decorated host element (unchanged -- decorate never mutates it). */
+    el: HTMLElement;
+    /** The overlay canvas (the only DOM node decorate adds). */
+    canvas: HTMLCanvasElement;
+    state: UIFXState;
+    /** Hijack-only. Throws in decorate mode. */
+    setValue(v?: number | null): void;
+    /** Hijack-only. Throws in decorate mode. */
+    setChecked(b?: boolean): void;
+    /** Remove the overlay + every listener decorate added; the host is left
+     *  byte-identical to before decorate. Idempotent. */
+    destroy(): void;
+}
+
+/**
+ * Decorate an EXISTING visible element with a canvas recipe WITHOUT hijacking it:
+ * no native element is created, opacity is never set, and the host is never
+ * reparented. An overlay canvas is added as a sibling and removed on destroy, so
+ * the host is byte-identical before and after. Recipe state is wired from the
+ * host's own events; for a form-control host, state.text/state.valid mirror
+ * el.value/el.validity (read at event time, never per frame). This is the honest
+ * home for a decoration over a real input (PasswordStrength, TypewriterField) and
+ * for generic form feedback (FocusHalo, ErrorShake, SuccessBloom). See 0004.
+ */
+export declare function decorateUIFX(
+    el: HTMLElement,
+    recipeFactory: RecipeFactory,
+    options?: DecorateOptions
+): DecorateInstance;
 
 export default mountUIFX;

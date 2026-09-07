@@ -26,7 +26,10 @@ function colorsOf(id, opts) {
     if (recipe.init) recipe.init(ctx, 160, 48, 40);
     ctx.record(true);
     for (let i = 0; i < 8; i++) {
-        const st = { hover: !!(i & 1), active: !!(i & 2), focused: !!(i & 4), toggled: !!(i & 1), val: (i % 5) / 4, w: 160, h: 48, padding: 40, dpr: 1 };
+        // valid toggles (false<->true edges drive ErrorShake/SuccessBloom) and
+        // text varies (PasswordStrength/TypewriterField); non-decorate recipes
+        // ignore both fields, so this just gives the decorate recipes a live host.
+        const st = { hover: !!(i & 1), active: !!(i & 2), focused: !!(i & 4), toggled: !!(i & 1), indeterminate: !!(i & 2), valid: !(i & 2), text: (i & 1) ? 'Ab7$k9' : '', val: (i % 5) / 4, w: 160, h: 48, padding: 40, dpr: 1 };
         const ptr = { x: 80, y: 24, vx: 6, vy: 0 };
         if (recipe.onDrag) recipe.onDrag(st.val, ptr.vx, st);
         if (recipe.onClick) recipe.onClick(ptr.x, ptr.y, st);
@@ -48,10 +51,10 @@ const has = (set, needle) => {
 const THEME = { theme: { light: '#ff00aa', mid: '#00ffaa', dark: '#0a0a12' } };
 
 describe('U3b theming -- RECIPE_META flags', () => {
-    it('themeable is true for all 53 recipes', () => {
+    it('themeable is true for all 56 recipes', () => {
         for (const m of RECIPE_META) assert.equal(m.themeable, true, m.id + ' should be themeable');
     });
-    it('motionSafe stays false for all 53 (reduced motion is a later pass)', () => {
+    it('motionSafe stays false for all 56 (reduced motion is a later pass)', () => {
         for (const m of RECIPE_META) assert.equal(m.motionSafe, false, m.id + ' motionSafe');
     });
 });

@@ -5,6 +5,49 @@ All notable changes to `@zakkster/lite-ui-fx` are documented here.
 The format follows Keep a Changelog; this project adheres to Semantic
 Versioning.
 
+## [1.6.0] -- 2026-09-07
+
+Decorate mode (U4b, the second half of roadmap U4). A second public mount mode
+alongside the hijack `mountUIFX`: `decorateUIFX` positions a canvas AROUND an
+existing visible element instead of hijacking it. Additive: a bare `mountUIFX`
+mount is byte-identical to 1.5.0; 53 -> 56 recipes.
+
+### Added
+
+- `decorateUIFX(el, recipeFactory, options)`: a canvas overlay AROUND a live
+  element -- no `opacity:0`, no reparent. The overlay is a sibling placed from the
+  host's offset box and removed on `destroy()`, so the host is byte-identical
+  before and after (additive-only). Recipe `state` is wired from the host's own
+  events; for a form-control host `state.text` and `state.valid` mirror `el.value`
+  and `el.validity`, read at event time (never per frame). `setValue`/`setChecked`
+  are hijack-only and throw. Options are a subset (`padding`, `seed`, `colors`,
+  `theme`, `text`, `font`); the hijack-only keys throw in decorate mode.
+- Three decorate recipes, born themed and t3-gated: `FocusHalo`, `ErrorShake`,
+  `SuccessBloom` (generic form feedback, reading `state.focused` / `state.valid`).
+  Registered in `RECIPES` / `RECIPE_META` (type `'decorate'`) / the default export
+  / a new `UIFXRecipes5` barrel.
+- `'decorate'` as a `RECIPE_META.type` routing tag: `mountRecipe(el, id)` routes a
+  decorate recipe to `decorateUIFX`. `VALID_META_TYPES` gains exactly this one
+  non-`UIType` tag; `mountUIFX` still rejects it (the two paths cannot cross).
+- Optional `state.text` / `state.valid` fields (decorate mode only). TypeScript
+  `DecorateOptions`, `DecorateInstance`, and `decorateUIFX` in the d.ts.
+- `decisions/0004-decorate-mode.md`; decorate coverage across the suite: t0 host
+  byte-identical DOM diff + a t9 `decorate-host-mutation` control, t1 fail-closed +
+  degenerate sweep, t2 A14-A16 (state wiring, host untouched, non-input host), t3
+  zero-alloc churn, t5 decorate on the shared ticker. 164 -> 177 node:test tests.
+
+### Changed
+
+- `PasswordStrength` and `TypewriterField` re-homed from their U4a-era fake types
+  (slider / toggle) onto decorate mode (`RECIPE_META.type` `'decorate'`). Unlike
+  the U4a re-homes these are behaviour ports: they now read the live host input --
+  PasswordStrength derives strength from `state.text` (zero-alloc `charCodeAt`
+  scan, recomputed only on change); TypewriterField animates an underline that
+  grows with the typed text (no `measureText`). Both stay `themeable`.
+- RECIPE_META covers 56 recipes; `themeable` true for all 56, `motionSafe` false
+  for all 56. All 56 stay zero-GC under the t3 frame-alloc gate (default AND
+  themed). `mountUIFX` and every hijack mount are unchanged.
+
 ## [1.5.0] -- 2026-09-07
 
 New native element types (U4a, the first half of roadmap U4). Vol.3 faked

@@ -9,7 +9,7 @@
 // so { checked } / { value } are asserted strictly BEFORE frame 1.
 
 import assert from 'node:assert/strict';
-import { mountUIFX, UIType, makeContainer, EventStub, raf, Ctx2DStub, RECIPES } from './harness.mjs';
+import { mountUIFX, decorateUIFX, UIType, makeContainer, EventStub, raf, Ctx2DStub, RECIPES } from './harness.mjs';
 
 function keydown(el, code) {
     el.dispatchEvent(Object.assign(new EventStub('keydown'), { code }));
@@ -173,6 +173,65 @@ export async function runT2() {
         assert.equal(inst.state.toggled, true, 'A13: setChecked -> state.toggled');
         assert.equal(toggles, 1, 'A13: setChecked fires onToggle exactly once');
         inst.destroy();
+    }
+
+    // ---- U4b A14: DECORATE wires state from the host's own events and NEVER
+    // mutates the host (no opacity, no attribute, no reparent). setValue/setChecked
+    // are hijack-only (a decoration reflects the host, it does not drive it). ----
+    {
+        const host = document.createElement('input');
+        host.offsetWidth = 200; host.offsetHeight = 28;
+        container.appendChild(host);
+        const attrsBefore = host._attrs.size, styleBefore = Object.keys(host.style).length;
+        const inst = decorateUIFX(host, () => ({ tick() {} }));
+        assert.equal(inst.el, host, 'A14: decorate returns the host element');
+        assert.equal(inst.state.text, '', 'A14: state.text starts from the (empty) host value');
+        host.dispatchEvent(new EventStub('focus'));
+        assert.equal(inst.state.focused, true, 'A14: host focus -> state.focused');
+        host.dispatchEvent(new EventStub('blur'));
+        assert.equal(inst.state.focused, false, 'A14: host blur -> state.focused false');
+        host.value = 'Ab7$k9';
+        host.dispatchEvent(new EventStub('input'));
+        assert.equal(inst.state.text, 'Ab7$k9', 'A14: host input value -> state.text (event time)');
+        assert.equal(host._attrs.size, attrsBefore, 'A14: decorate wrote no host attribute');
+        assert.equal(Object.keys(host.style).length, styleBefore, 'A14: decorate wrote no host style (no opacity hijack)');
+        assert.throws(() => inst.setValue(0.5), /hijack-only/, 'A14: decorate setValue throws (hijack-only)');
+        assert.throws(() => inst.setChecked(true), /hijack-only/, 'A14: decorate setChecked throws (hijack-only)');
+        inst.destroy();
+        container.removeChild(host);
+    }
+
+    // ---- U4b A15: DECORATE mirrors host validity (drives ErrorShake/SuccessBloom). --
+    {
+        const host = document.createElement('input');
+        host.offsetWidth = 200; host.offsetHeight = 28;
+        host.validity = { valid: true };
+        container.appendChild(host);
+        const inst = decorateUIFX(host, () => ({ tick() {} }));
+        assert.equal(inst.state.valid, true, 'A15: valid starts from the host validity');
+        host.dispatchEvent(new EventStub('invalid'));
+        assert.equal(inst.state.valid, false, 'A15: invalid event -> state.valid false');
+        host.validity = { valid: true };
+        host.dispatchEvent(new EventStub('change'));
+        assert.equal(inst.state.valid, true, 'A15: change re-reads validity -> state.valid true');
+        inst.destroy();
+        container.removeChild(host);
+    }
+
+    // ---- U4b A16: DECORATE over a NON-input host wires focus and never throws on
+    // the absent value (state.text stays ''). ----
+    {
+        const host = document.createElement('div');
+        host.offsetWidth = 120; host.offsetHeight = 40;
+        container.appendChild(host);
+        const inst = decorateUIFX(host, () => ({ tick() {} }));
+        assert.equal(inst.state.text, '', 'A16: non-input host -> state.text empty');
+        host.dispatchEvent(new EventStub('focus'));
+        assert.equal(inst.state.focused, true, 'A16: non-input host focus still wires');
+        host.dispatchEvent(new EventStub('input')); // harmless: no value on a div
+        assert.equal(inst.state.text, '', 'A16: input on a valueless host leaves state.text empty');
+        inst.destroy();
+        container.removeChild(host);
     }
 
     assert.equal(raf.pending(), 0, 't2 raf pending returns to 0');

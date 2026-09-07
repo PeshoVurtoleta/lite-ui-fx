@@ -14,7 +14,7 @@
 // conservative: it keeps builtin calls unless told they are pure. The `pure` list
 // names exactly the four Object.* builtins the module uses at module scope, so
 // esbuild honors the same `sideEffects: false` promise. It is not gaming: the
-// recipe functions have zero cross-references; the ONLY thing linking all 50 is
+// recipe functions have zero cross-references; the ONLY thing linking all 56 is
 // that registry, and the resulting bundle collapses from ~78 KB (all bodies) to a
 // few KB with 49 recipes provably gone.
 

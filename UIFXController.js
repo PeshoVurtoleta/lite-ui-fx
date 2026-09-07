@@ -22,7 +22,7 @@ import { Ticker } from '@zakkster/lite-ticker';
 
 // Three-place version sync: this constant, package.json "version", and the
 // VERSION line in llms.txt must always match. /release keeps them locked.
-export const VERSION = '1.5.0';
+export const VERSION = '1.6.0';
 
 // ---------------------------------------------------------
 //  SHARED TICKER (ref-counted, one RAF for all UI components)
@@ -86,6 +86,12 @@ function releaseSliderStyle() {
 const KNOWN_HOOKS = ['init', 'tick', 'onHover', 'onLeave', 'onClick', 'onToggle', 'onDrag', 'destroy'];
 const KNOWN_OPTIONS = ['width', 'height', 'padding', 'label', 'value', 'checked', 'disabled', 'seed', 'colors', 'theme', 'text', 'font', 'knobMode', 'announce'];
 const KNOB_MODES = ['rotate', 'vertical'];
+
+// Options valid in decorate mode (decorateUIFX). A canvas AROUND a live element
+// inherits the host's geometry (offset box) and value (read from el), so the
+// hijack-only options (width/height/value/checked/disabled/knobMode/announce/
+// label) are rejected here -- fail closed. Cold: read only at mount.
+const DECORATE_OPTIONS = ['padding', 'seed', 'colors', 'theme', 'text', 'font'];
 
 // Levenshtein edit distance. Cold: only reached on the error path.
 function _editDistance(a, b) {
@@ -691,6 +697,329 @@ export function mountUIFX(container, type, recipeFactory, options = {}) {
         if (wrapperAppended) wrapper.remove();
         if (styleAcquired) releaseSliderStyle();
         // Re-throw the ORIGINAL error, preserved verbatim (never wrapped).
+        throw err;
+    }
+}
+
+// =========================================================
+//  decorateUIFX -- The second mount mode (canvas AROUND a live element)
+// =========================================================
+
+/**
+ * Decorate an EXISTING visible element with a canvas recipe, WITHOUT hijacking
+ * it. Unlike mountUIFX this creates no native element, never sets opacity:0, and
+ * never reparents `el`: it adds ONE absolutely-positioned overlay canvas as a
+ * sibling in el.parentNode (placed from el's offset box) plus the listeners it
+ * owns, and on destroy removes exactly those -- the host is byte-identical to
+ * before. Recipe state is wired from el's own events; for a form-control host,
+ * state.text and state.valid mirror el.value / el.validity (read at event time,
+ * never per frame). This is the honest home for a decoration over a real input
+ * (PasswordStrength, TypewriterField) and for generic form feedback (FocusHalo,
+ * ErrorShake, SuccessBloom). See decisions/0004.
+ *
+ * @param {HTMLElement} el            The live element to decorate (stays visible).
+ * @param {Function}    recipeFactory (options) => Recipe object
+ * @param {Object}      [options]     padding, seed, colors, theme, text, font
+ * @returns {{ el, canvas, state, setValue, setChecked, destroy }}
+ */
+export function decorateUIFX(el, recipeFactory, options = {}) {
+    // =====================================================================
+    //  PHASE 1 -- VALIDATION ONLY. No side effect until every check passes
+    //  (fail closed, mirrors mountUIFX): no createElement, no insertBefore,
+    //  no ticker acquire, no recipe.init.
+    // =====================================================================
+
+    // 1. el must be a live, attached DOM element -- we read its offset box and
+    //    hang the overlay off its parent. A detached el has no parentNode to host
+    //    the canvas: an Error, never a silent no-op.
+    if (!el || typeof el.addEventListener !== 'function' ||
+        typeof el.getBoundingClientRect !== 'function') {
+        throw new Error('decorateUIFX: el must be a DOM element');
+    }
+    if (!el.parentNode || typeof el.parentNode.insertBefore !== 'function') {
+        throw new Error('decorateUIFX: el must be attached to the DOM (no parentNode to host the overlay)');
+    }
+
+    // 2. options: decorate accepts a subset. A hijack-only key is a mistake, not a
+    //    silent ignore; a truly unknown key gets a did-you-mean over the decorate
+    //    set. Both fail closed, before any element exists.
+    for (const k in options) {
+        if (!Object.prototype.hasOwnProperty.call(options, k)) continue;
+        if (DECORATE_OPTIONS.indexOf(k) === -1) {
+            if (KNOWN_OPTIONS.indexOf(k) !== -1) {
+                throw new Error('decorateUIFX: option "' + k + '" is not valid in decorate mode (hijack-only)');
+            }
+            throw new Error(_didYouMean('decorateUIFX: unknown option', k, DECORATE_OPTIONS));
+        }
+    }
+    const padding = options.padding === undefined ? 40 : options.padding;
+
+    // Theming options (decisions/0002): validated fail closed here, forwarded to
+    // the recipe factory which resolves them in init. Cold mount code.
+    const _theme = options.theme;
+    if (_theme !== undefined) {
+        if (_theme === null || typeof _theme !== 'object' ||
+            typeof _theme.light !== 'string' || typeof _theme.mid !== 'string' ||
+            typeof _theme.dark !== 'string' || Object.keys(_theme).length !== 3) {
+            throw new Error('decorateUIFX: option "theme" must be { light, mid, dark } of color strings');
+        }
+    }
+    const _colors = options.colors;
+    if (_colors !== undefined &&
+        (!Array.isArray(_colors) || _colors.some((c) => typeof c !== 'string'))) {
+        throw new Error('decorateUIFX: option "colors" must be an array of color strings');
+    }
+    if (options.text !== undefined && typeof options.text !== 'string') {
+        throw new Error('decorateUIFX: option "text" must be a string');
+    }
+    if (options.font !== undefined && typeof options.font !== 'string') {
+        throw new Error('decorateUIFX: option "font" must be a string');
+    }
+    if (options.seed !== undefined &&
+        (typeof options.seed !== 'number' || !Number.isFinite(options.seed))) {
+        throw new Error('decorateUIFX: option "seed" must be a finite number');
+    }
+
+    // 3. recipeFactory + recipe object + hooks (same contract as mountUIFX).
+    if (typeof recipeFactory !== 'function') {
+        throw new Error('decorateUIFX: recipeFactory must be a function');
+    }
+    const recipe = recipeFactory(options);
+    if (!recipe || typeof recipe !== 'object') {
+        throw new Error('decorateUIFX: recipe must be an object');
+    }
+    if (typeof recipe.tick !== 'function') {
+        throw new Error('decorateUIFX: recipe.tick must be a function');
+    }
+    for (const k in recipe) {
+        if (!Object.prototype.hasOwnProperty.call(recipe, k)) continue;
+        if (typeof recipe[k] === 'function' && KNOWN_HOOKS.indexOf(k) === -1) {
+            throw new Error(_didYouMean('decorateUIFX: unknown recipe hook', k, KNOWN_HOOKS));
+        }
+    }
+
+    // =====================================================================
+    //  PHASE 2 -- SIDE EFFECTS (fail-closed unwind, mirrors mountUIFX). The
+    //  only acquisitions are the overlay canvas, the AbortController, and the
+    //  shared ticker -- unwound in reverse order on any throw.
+    // =====================================================================
+    let canvasAppended = false;
+    let acCreated = false;
+    let tickerAcquired = false;
+    let canvas = null;
+    let ac = null;
+    let removeTick = null;
+
+    try {
+    // -- Placement from el's OFFSET box. Because the overlay is a SIBLING of el,
+    //    they share an offsetParent, so offset-box coords land the canvas over el
+    //    WITHOUT writing any style onto the parent (decision 2). Read once here,
+    //    refreshed on resize only. --
+    let ow = el.offsetWidth;
+    let oh = el.offsetHeight;
+    let dpr = window.devicePixelRatio || 1;
+    let cw = ow + padding * 2;
+    let ch = oh + padding * 2;
+
+    canvas = document.createElement('canvas');
+    canvas.width = cw * dpr;
+    canvas.height = ch * dpr;
+    Object.assign(canvas.style, {
+        position: 'absolute',
+        left: (el.offsetLeft - padding) + 'px',
+        top: (el.offsetTop - padding) + 'px',
+        width: cw + 'px', height: ch + 'px',
+        pointerEvents: 'none',
+    });
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    // Insert the overlay right AFTER el: among auto-z siblings it paints on top,
+    // and pointerEvents:none keeps el receiving every event. el is NOT touched --
+    // no style write, no reparent (the whole point of decorate mode).
+    el.parentNode.insertBefore(canvas, el.nextSibling);
+    canvasAppended = true;
+
+    // -- State. Generic fields wire like hijack mode; text/valid mirror the host,
+    //    read now at init (law: hook initial values from the element) and refreshed
+    //    at event time only. --
+    const state = {
+        hover: false,
+        active: false,
+        focused: (typeof document !== 'undefined' && document.activeElement === el),
+        text: (typeof el.value === 'string' ? el.value : ''),
+        valid: (el.validity ? !!el.validity.valid : true),
+        w: ow, h: oh, padding, dpr,
+    };
+    const pointer = { x: -999, y: -999, vx: 0, vy: 0 };
+    // Cached rect for pointer math (U-11): filled lazily, refreshed on enter/
+    // scroll/resize; pointermove does ZERO layout reads at steady state.
+    let rect = null;
+
+    // -- Initialize recipe (validated in phase 1). ctx exists now. --
+    if (recipe.init) recipe.init(ctx, ow, oh, padding);
+
+    // -- Events (all via AbortController: destroy()'s abort removes exactly what
+    //    decorate added and nothing the host owned). --
+    ac = new AbortController();
+    acCreated = true;
+    const signal = ac.signal;
+
+    function updatePointer(e) {
+        if (!rect) rect = el.getBoundingClientRect();
+        const nx = e.clientX - rect.left;
+        const ny = e.clientY - rect.top;
+        pointer.vx = nx - pointer.x;
+        pointer.vy = ny - pointer.y;
+        pointer.x = nx;
+        pointer.y = ny;
+    }
+    function refreshRect() { rect = el.getBoundingClientRect(); }
+    // Reposition the overlay from the offset box after a layout change (cold path).
+    // All layout READS are hoisted above the style WRITES: writing canvas.style
+    // dirties layout, so reading el.offset* afterwards would force a synchronous
+    // reflow. A decoration over live DOM is the one place this package can force
+    // layout (see the U4b brief HOT PATH note), so keep read-before-write even here.
+    function reposition() {
+        const nw = el.offsetWidth;
+        const nh = el.offsetHeight;
+        const ol = el.offsetLeft;
+        const ot = el.offsetTop;
+        canvas.style.left = (ol - padding) + 'px';
+        canvas.style.top = (ot - padding) + 'px';
+        if (nw !== ow || nh !== oh) {
+            ow = nw; oh = nh;
+            cw = ow + padding * 2;
+            ch = oh + padding * 2;
+            canvas.width = cw * dpr;
+            canvas.height = ch * dpr;
+            canvas.style.width = cw + 'px';
+            canvas.style.height = ch + 'px';
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            state.w = ow; state.h = oh;
+        }
+    }
+
+    window.addEventListener('scroll', refreshRect, { passive: true, signal });
+    window.addEventListener('resize', () => { reposition(); refreshRect(); }, { passive: true, signal });
+
+    el.addEventListener('pointermove', updatePointer, { signal });
+    el.addEventListener('pointerenter', (e) => {
+        state.hover = true;
+        refreshRect();
+        updatePointer(e);
+        if (recipe.onHover) recipe.onHover(state, pointer);
+    }, { signal });
+    el.addEventListener('pointerleave', () => {
+        state.hover = false;
+        if (recipe.onLeave) recipe.onLeave(state, pointer);
+    }, { signal });
+    el.addEventListener('pointerdown', (e) => {
+        state.active = true;
+        updatePointer(e);
+        if (recipe.onClick) recipe.onClick(pointer.x, pointer.y, state);
+    }, { signal });
+    el.addEventListener('pointerup', () => { state.active = false; }, { signal });
+
+    el.addEventListener('focus', () => { state.focused = true; }, { signal });
+    el.addEventListener('blur', () => { state.focused = false; }, { signal });
+
+    // Host content -> state, at EVENT time only (el.value getter allocates a
+    // string; keep it off the frame path). A non-form host never fires these.
+    function syncHostValue() {
+        state.text = (typeof el.value === 'string' ? el.value : '');
+        state.valid = (el.validity ? !!el.validity.valid : true);
+    }
+    el.addEventListener('input', syncHostValue, { signal });
+    el.addEventListener('change', syncHostValue, { signal });
+    el.addEventListener('invalid', () => { state.valid = false; }, { signal });
+
+    // -- DPR re-read on display change (cold, feature-detected; absent matchMedia
+    //    is a silent no-op -- fail closed, never throw). --
+    if (typeof window.matchMedia === 'function') {
+        const mq = window.matchMedia('(resolution: ' + dpr + 'dppx)');
+        mq.addEventListener('change', () => {
+            const nd = window.devicePixelRatio || 1;
+            dpr = nd;
+            canvas.width = cw * nd;
+            canvas.height = ch * nd;
+            ctx.setTransform(nd, 0, 0, nd, 0, 0);
+            state.dpr = nd;
+        }, { signal });
+    }
+
+    // -- Render loop (shared ticker; same quarantine-on-throw as mountUIFX). --
+    const ticker = acquireTicker();
+    tickerAcquired = true;
+    let destroyed = false;
+    let quarantined = false;
+
+    removeTick = ticker.add((dtMs) => {
+        if (destroyed || quarantined) return;
+        const dt = dtMs / 1000;
+        const now = performance.now();
+
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, cw, ch);
+        ctx.save();
+        ctx.translate(padding, padding);  // Origin = the host element's top-left
+        try {
+            recipe.tick(ctx, dt, now, state, pointer);
+        } catch (err) {
+            quarantined = true;
+            console.error('decorateUIFX: recipe.tick threw; decoration quarantined', err);
+            ctx.restore();
+            ctx.clearRect(0, 0, cw, ch);
+            return;
+        }
+        ctx.restore();
+    });
+
+    // -- Public API --
+    return {
+        /** The decorated host element (unchanged; provided for external reads). */
+        el,
+
+        /** The overlay canvas (for external styling). */
+        canvas,
+
+        /** Current state (read-only reference). */
+        state,
+
+        /**
+         * Hijack-only. A decoration reflects the host; it does not own or push
+         * into the host's value, so setValue/setChecked fail closed here (use the
+         * host's own API to change it -- the decoration follows via its events).
+         */
+        setValue() {
+            throw new Error('decorateUIFX: setValue is hijack-only; a decoration reflects the host, it does not drive it');
+        },
+        setChecked() {
+            throw new Error('decorateUIFX: setChecked is hijack-only; a decoration reflects the host, it does not drive it');
+        },
+
+        /** Destroy: remove the overlay + every listener decorate added. Idempotent.
+         *  The host element is byte-identical to before decorate (never touched). */
+        destroy() {
+            if (destroyed) return;
+            destroyed = true;
+            ac.abort();
+            removeTick();
+            if (recipe.destroy) recipe.destroy();
+            releaseTicker();
+            canvas.remove();  // the ONLY DOM node decorate added
+        },
+    };
+    } catch (err) {
+        // A phase-2 step threw (realistically recipe.init). Unwind ONLY what was
+        // acquired, reverse order, each flag-guarded. recipe.destroy is NOT called
+        // (init did not succeed). Re-throw the ORIGINAL error, unwrapped.
+        if (tickerAcquired) {
+            if (removeTick) removeTick();
+            releaseTicker();
+        }
+        if (acCreated) ac.abort();
+        if (canvasAppended) canvas.remove();
         throw err;
     }
 }

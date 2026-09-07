@@ -35,7 +35,7 @@ import { createRoot, effect } from '@zakkster/lite-signal';
 installDom();
 raf.install();
 
-const { mountUIFX, UIType } = await import('../../UIFXController.js');
+const { mountUIFX, decorateUIFX, UIType } = await import('../../UIFXController.js');
 const { RECIPES, RECIPE_META } = await import('../../UIFXRecipes.js');
 
 // ---------------------------------------------------------------------------
@@ -85,8 +85,10 @@ function makeFrame(recipeFactory, driver) {
     const ctx = new Ctx2DStub();
     const recipe = recipeFactory();
     const state = {
-        hover: false, active: false, focused: false, toggled: false,
+        hover: false, active: false, focused: false, toggled: false, indeterminate: false,
         val: 0.5, w: 160, h: 48, padding: 40, dpr: 1,
+        // Decorate-mode fields (U4b): a form-control host's value + validity.
+        text: '', valid: true,
     };
     const pointer = { x: 4, y: 4, vx: 0, vy: 0 };
     const cw = state.w + 80, ch = state.h + 80, dpr = 1, padding = 40;
@@ -141,8 +143,8 @@ export {
     installDom, setDpr, emitDpr, makeContainer, headChildCount,
     Ctx2DStub, EventStub, PointerEventStub, FocusEventStub, raf,
     // controller
-    mountUIFX, UIType,
-    // recipes registry (drives the meta-driven t0/t1 sweep over all 53)
+    mountUIFX, decorateUIFX, UIType,
+    // recipes registry (drives the meta-driven t0/t1 sweep over all 56)
     RECIPES, RECIPE_META,
     // signal
     createRoot, effect,

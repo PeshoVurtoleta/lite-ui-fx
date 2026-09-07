@@ -63,12 +63,16 @@ The controller provides this every frame:
     hover: boolean,     // Pointer is inside the element
     active: boolean,    // Pointer is pressed down
     focused: boolean,   // Element has keyboard focus
-    toggled: boolean,   // Checkbox checked state (toggles)
-    val: number,        // 0--1 slider value (sliders)
+    toggled: boolean,   // Checkbox checked state (toggles/checkboxes)
+    indeterminate: boolean, // CHECKBOX only: native indeterminate (setValue(null))
+    val: number,        // 0--1 value (sliders/knobs/progress)
     w: number,          // Element width in CSS pixels
     h: number,          // Element height
     padding: number,    // Canvas overflow padding
     dpr: number,        // Device pixel ratio
+    // Decorate mode only (decorateUIFX): the live host's value + validity.
+    text: string,       // the host form-control's value string ('' if none)
+    valid: boolean,     // the host's validity (el.validity.valid, else true)
 }
 ```
 
@@ -121,13 +125,65 @@ const instance = mountUIFX(
 instance.destroy();
 ```
 
-## Three Element Types
+## Element Types & Mount Modes
+
+`mountUIFX` HIJACKS -- it creates one of six native elements (opacity:0) under the
+canvas:
 
 | Type | Native Element | Recipe Gets | Key State |
 |------|----------------|-------------|-----------|
 | `UIType.TOGGLE` | `<input type="checkbox" role="switch">` | `onToggle(checked)` | `state.toggled` |
 | `UIType.BUTTON` | `<button>` | `onClick(x, y, state)` | `state.active` |
 | `UIType.SLIDER` | `<input type="range">` | `onDrag(val, velocity)` | `state.val` (0--1) |
+| `UIType.CHECKBOX` | `<input type="checkbox">` (no `role=switch`) | `onToggle(checked)` | `state.toggled`, `state.indeterminate` |
+| `UIType.PROGRESS` | `<progress>` (non-interactive) | (driven by `setValue`) | `state.val` |
+| `UIType.KNOB` | `<input type="range">` | `onDrag(val, velocity)` | `state.val`, `knobMode` |
+
+## Decorate-Mode Recipes (a canvas AROUND a live element)
+
+`decorateUIFX(el, factory, options)` is the SECOND mount mode: instead of creating
+a hidden element, it positions a canvas around an EXISTING, visible element (a real
+`<input>`, a button, any element). Same recipe interface, same coordinate system --
+`(0,0)` is the host's top-left, `state.w/h` are the host's size -- but three rules
+differ, and breaking them is caught by the torture t0 decorate DOM-diff:
+
+1. **Never touch the host.** A decoration paints ONLY its overlay canvas. Do not
+   write `el.style`, set an attribute, or read/move the host in `init`/`tick`. The
+   host must be byte-identical after `destroy()` (additive-only). The controller
+   never sets `opacity:0` and never reparents the host -- neither may your recipe.
+2. **Read host content from `state`, at frame time, allocation-free.** For a
+   form-control host, `state.text` (the value string) and `state.valid` (validity)
+   are updated by the controller at EVENT time (input/change/invalid) -- never per
+   frame. Your `tick` reads them; scan `state.text` with `charCodeAt` (no allocating
+   string ops), and edge-detect `state.valid` against a closure-cached previous.
+   There is NO new hook: a decoration reacts by polling `state` in `tick`.
+3. **`setValue`/`setChecked` are hijack-only.** A decoration reflects the host; it
+   does not drive it. Both throw in decorate mode.
+
+```javascript
+import { decorateUIFX } from './UIFXController.js';
+// A decoration reads state.focused / state.valid / state.text; it never draws the
+// host's own text (the real element already shows it).
+export function Underline() {
+    let fill = 0;
+    return {
+        tick(ctx, dt, now, state) {
+            const len = (state.text || '').length;           // number, no alloc
+            fill += ((len ? Math.min(len / 24, 1) : 0) - fill) * dt * 8;
+            ctx.strokeStyle = state.focused ? '#6ee7b6' : '#556';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(2, state.h - 3);
+            ctx.lineTo(2 + (state.w - 4) * fill, state.h - 3);
+            ctx.stroke();
+        },
+    };
+}
+const deco = decorateUIFX(document.querySelector('#field'), Underline);
+```
+
+Register a decorate recipe with `RECIPE_META.type: 'decorate'` -- then
+`mountRecipe(el, id)` routes it to `decorateUIFX` automatically.
 
 ## Using @zakkster Libraries in Recipes
 

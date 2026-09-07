@@ -1,7 +1,7 @@
 import type { UIFXRecipe, UIFXInstance, MountOptions } from './UIFXController';
 
 // ===========================================================
-//  RECIPE OPTIONS + FACTORIES (all 53)
+//  RECIPE OPTIONS + FACTORIES (all 56)
 // ===========================================================
 
 /**
@@ -119,6 +119,13 @@ export declare function ScratchReveal(options?: RecipeOptions): UIFXRecipe;
 export declare function TimerCountdown(options?: RecipeOptions): UIFXRecipe;
 export declare function PullRefresh(options?: RecipeOptions): UIFXRecipe;
 
+// -- U4b: DECORATE recipes (mounted AROUND a live element via decorateUIFX).
+//    Generic form feedback; PasswordStrength + TypewriterField (above) re-home
+//    onto decorate mode too. See decisions/0004. --
+export declare function FocusHalo(options?: RecipeOptions): UIFXRecipe;
+export declare function ErrorShake(options?: RecipeOptions): UIFXRecipe;
+export declare function SuccessBloom(options?: RecipeOptions): UIFXRecipe;
+
 // ===========================================================
 //  BARREL OBJECTS (back-compat)
 // ===========================================================
@@ -189,11 +196,21 @@ export declare const UIFXRecipes4: {
     LiquidFill: typeof LiquidFill;
 };
 
+/** U4b additions -- decorate-mode recipes (kept out of the Vol.1-3 + Vol.4 snapshots). */
+export declare const UIFXRecipes5: {
+    FocusHalo: typeof FocusHalo;
+    ErrorShake: typeof ErrorShake;
+    SuccessBloom: typeof SuccessBloom;
+};
+
 // ===========================================================
 //  RECIPE REGISTRY
 // ===========================================================
 
-export type RecipeType = 'toggle' | 'button' | 'slider' | 'checkbox' | 'progress' | 'knob';
+// 'decorate' is not a UIType (it creates no native element); it is the registry
+// routing tag for a recipe mounted AROUND a live element via decorateUIFX. See
+// decisions/0004.
+export type RecipeType = 'toggle' | 'button' | 'slider' | 'checkbox' | 'progress' | 'knob' | 'decorate';
 
 export type RecipeFactory = (options?: Record<string, unknown>) => UIFXRecipe;
 
@@ -223,7 +240,10 @@ export declare function registerRecipe(
 ): RecipeFactory;
 
 /**
- * Resolve a recipe id to its factory + declared type and mount it via mountUIFX.
+ * Resolve a recipe id to its factory + declared type and mount it. A hijack
+ * recipe mounts via mountUIFX (the native element is created inside `container`);
+ * a recipe whose meta.type is 'decorate' mounts via decorateUIFX, treating
+ * `container` as the LIVE element to decorate (a canvas is placed AROUND it).
  * Fail closed: unknown id or a conflicting options.type throws.
  */
 export declare function mountRecipe(
@@ -233,7 +253,7 @@ export declare function mountRecipe(
 ): UIFXInstance;
 
 // ===========================================================
-//  DEFAULT EXPORT -- combined all-53 namespace
+//  DEFAULT EXPORT -- combined all-56 namespace
 // ===========================================================
 
 declare const UIFXAllRecipes: {
@@ -290,5 +310,8 @@ declare const UIFXAllRecipes: {
     ScratchReveal: typeof ScratchReveal;
     TimerCountdown: typeof TimerCountdown;
     PullRefresh: typeof PullRefresh;
+    FocusHalo: typeof FocusHalo;
+    ErrorShake: typeof ErrorShake;
+    SuccessBloom: typeof SuccessBloom;
 };
 export default UIFXAllRecipes;

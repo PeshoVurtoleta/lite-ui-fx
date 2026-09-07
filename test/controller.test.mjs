@@ -13,7 +13,7 @@ import * as raf from './harness/raf-stub.mjs';
 installDom();
 raf.install();
 
-const { mountUIFX, UIType } = await import('../UIFXController.js');
+const { mountUIFX, decorateUIFX, UIType } = await import('../UIFXController.js');
 
 function makeSpy(impl) {
     const fn = (...args) => { fn.calls.push(args); return impl ? impl(...args) : undefined; };
@@ -707,5 +707,117 @@ describe('U4a element types', () => {
         assert.throws(() => sl.setChecked(true), /setChecked/);
         assert.throws(() => sl.setValue(null), /setValue/);
         sl.destroy();
+    });
+});
+
+// ---------------------------------------------------------------------------
+//  U4b -- decorate mode (a canvas AROUND a live element, no hijack)
+// ---------------------------------------------------------------------------
+
+describe('U4b decorate mode', () => {
+    let ctr;
+    beforeEach(() => { ctr = makeContainer(); });
+    afterEach(() => {
+        ctr.remove();
+        assert.equal(raf.pending(), 0, 'raf queue must drain to 0 after each test');
+    });
+
+    function host(w = 200, h = 28) {
+        const el = document.createElement('input');
+        el.offsetWidth = w; el.offsetHeight = h;
+        ctr.appendChild(el);
+        return el;
+    }
+
+    it('adds ONE overlay canvas as a sibling; never reparents or hides the host', () => {
+        const el = host();
+        const before = ctr.children.length; // host present
+        const i = decorateUIFX(el, recipe());
+        assert.equal(i.el, el, 'returns the host element');
+        assert.equal(ctr.children.length, before + 1, 'overlay added as a sibling');
+        assert.equal(el.parentNode, ctr, 'host not reparented');
+        assert.equal(el.style.opacity, undefined, 'host opacity untouched (not a hijack)');
+        assert.equal(i.canvas.style.pointerEvents, 'none', 'overlay blocks no pointer events');
+        assert.equal(i.canvas.style.position, 'absolute', 'overlay is absolutely positioned');
+        i.destroy();
+    });
+
+    it('places the overlay from the host offset box (offsetLeft/Top - padding)', () => {
+        const el = host(200, 28);
+        el.offsetLeft = 30; el.offsetTop = 12;
+        const i = decorateUIFX(el, recipe(), { padding: 40 });
+        assert.equal(i.canvas.style.left, (30 - 40) + 'px');
+        assert.equal(i.canvas.style.top, (12 - 40) + 'px');
+        assert.equal(i.canvas.style.width, (200 + 80) + 'px');
+        assert.equal(i.canvas.style.height, (28 + 80) + 'px');
+        i.destroy();
+    });
+
+    it('state.w/h come from the host offset box; the decoration ticks on the shared ticker', () => {
+        const el = host(120, 40);
+        const tick = makeSpy();
+        const i = decorateUIFX(el, recipe({ tick }));
+        assert.equal(i.state.w, 120);
+        assert.equal(i.state.h, 40);
+        let t = performance.now();
+        raf.step(t += 16);
+        assert.equal(tick.calls.length, 1, 'decoration ticks on the shared ticker');
+        i.destroy();
+    });
+
+    it('wires state from host events: focus/blur, input->text, invalid->valid', () => {
+        const el = host();
+        const i = decorateUIFX(el, recipe());
+        el.dispatchEvent(new FocusEvent('focus'));
+        assert.equal(i.state.focused, true);
+        el.dispatchEvent(new FocusEvent('blur'));
+        assert.equal(i.state.focused, false);
+        el.value = 'Secret1!';
+        el.dispatchEvent(new Event('input'));
+        assert.equal(i.state.text, 'Secret1!', 'input value -> state.text');
+        el.dispatchEvent(new Event('invalid'));
+        assert.equal(i.state.valid, false, 'invalid event -> state.valid false');
+        i.destroy();
+    });
+
+    it('destroy removes only the overlay; the host is byte-identical (no attr/style)', () => {
+        const el = host();
+        const attrsBefore = el._attrs.size;
+        const styleKeysBefore = Object.keys(el.style).length;
+        const before = ctr.children.length;
+        const i = decorateUIFX(el, recipe());
+        i.destroy();
+        i.destroy(); // idempotent
+        assert.equal(ctr.children.length, before, 'overlay removed');
+        assert.equal(el.parentNode, ctr, 'host still in place');
+        assert.equal(el._attrs.size, attrsBefore, 'no host attribute written');
+        assert.equal(Object.keys(el.style).length, styleKeysBefore, 'no host style written');
+    });
+
+    it('setValue / setChecked are hijack-only (throw in decorate mode)', () => {
+        const el = host();
+        const i = decorateUIFX(el, recipe());
+        assert.throws(() => i.setValue(0.5), /hijack-only/);
+        assert.throws(() => i.setChecked(true), /hijack-only/);
+        i.destroy();
+    });
+
+    it('fails closed: null / detached el, hijack-only + unknown options, missing tick', () => {
+        assert.throws(() => decorateUIFX(null, recipe()), /el/);
+        assert.throws(() => decorateUIFX(document.createElement('input'), recipe()), /attached/);
+        const el = host();
+        assert.throws(() => decorateUIFX(el, recipe(), { width: 100 }), /hijack-only/);
+        assert.throws(() => decorateUIFX(el, recipe(), { widht: 1 }), /unknown option/);
+        assert.throws(() => decorateUIFX(el, () => ({})), /tick/);
+        assert.equal(ctr.children.length, 1, 'only the host remains; a rejected mount leaves no orphan overlay');
+    });
+
+    it('recipe init/destroy lifecycle fires once each', () => {
+        const init = makeSpy(), destroy = makeSpy();
+        const el = host();
+        const i = decorateUIFX(el, recipe({ init, destroy }));
+        assert.equal(init.calls.length, 1, 'init called once at mount');
+        i.destroy();
+        assert.equal(destroy.calls.length, 1, 'recipe.destroy called once');
     });
 });

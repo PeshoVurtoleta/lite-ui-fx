@@ -1,5 +1,5 @@
 /**
- * @zakkster/lite-ui-fx -- Recipe Collection (all 53)
+ * @zakkster/lite-ui-fx -- Recipe Collection (all 56)
  *
  * The three recipe volumes consolidated into one shipped, typed, versioned
  * module, exposed as the ./recipes subpath export, plus the U4a additions for
@@ -19,6 +19,9 @@
  *               TypewriterField, SoundWaveBtn, UploadProgress, ScratchReveal,
  *               TimerCountdown, PullRefresh
  *   U4a (3):    TickDraw, IndeterminateScan (CHECKBOX), LiquidFill (PROGRESS)
+ *   U4b (3):    FocusHalo, ErrorShake, SuccessBloom (DECORATE) -- generic form
+ *               feedback; PasswordStrength + TypewriterField re-homed to DECORATE
+ *               (canvas AROUND a live input, driven by state.text; see 0004)
  *
  * Registry: RECIPES (null-prototype), RECIPE_META (live), RECIPE_NAMES,
  * registerRecipe(id, factory, meta?), mountRecipe(container, id, options?).
@@ -32,7 +35,7 @@
 
 import { lerp, clamp, easeOut, easeIn, easeInOut } from '@zakkster/lite-lerp';
 import { Random } from '@zakkster/lite-random';
-import { mountUIFX, UIType } from './UIFXController.js';
+import { mountUIFX, decorateUIFX, UIType } from './UIFXController.js';
 
 
 // ---------------------------------------------------------
@@ -2294,6 +2297,28 @@ export function RadioOrbit(o = {}) {
 // ===========================================================
 
 /** 9. Password Strength -- Segmented bar with color progression and label. */
+/** Password strength 0..1 from a string, zero-alloc (charCodeAt scan, no
+ *  allocating string ops). Length (up to ~12 chars) is 60%, character-class
+ *  diversity (lower/upper/digit/symbol) 40%. COLD -- called only when the
+ *  decorated field's text changes. */
+function pwStrength(s) {
+    const n = s.length;
+    if (n === 0) return 0;
+    let lo = 0, up = 0, di = 0, sy = 0;
+    for (let i = 0; i < n; i++) {
+        const c = s.charCodeAt(i);
+        if (c >= 97 && c <= 122) lo = 1;
+        else if (c >= 65 && c <= 90) up = 1;
+        else if (c >= 48 && c <= 57) di = 1;
+        else sy = 1;
+    }
+    const v = Math.min(n / 12, 1) * 0.6 + ((lo + up + di + sy) / 4) * 0.4;
+    return v > 1 ? 1 : v;
+}
+
+/** Password Strength (U4b DECORATE, re-home) -- four strength segments driven by
+ *  the LIVE host input's value (state.text), not a faked slider. Strength is
+ *  recomputed only when the text changes (cold); the tick is zero-alloc. */
 export function PasswordStrength(o = {}) {
     let segs=[0,0,0,0];
     const labels=['WEAK','FAIR','GOOD','STRONG'];
@@ -2302,9 +2327,14 @@ export function PasswordStrength(o = {}) {
         : (o.theme ? [o.theme.light, o.theme.mid, o.theme.dark, o.theme.light] : ['#ff6b6b','#fbbf24','#38bdf8','#6ee7b6']);
     const colors = base.length >= 4 ? base : [base[0], base[1 % base.length], base[2 % base.length], base[3 % base.length]];
     const noneColor = (o.theme && o.theme.mid) || '#666';
+    let lastText = null, strength = 0;  // strength recomputed only on text change
     return {
         tick(c,dt,now,st) {
-            const level=Math.ceil(st.val*4);
+            // state.text is the live host value; rescan only on change (cold). A
+            // bare decoration over an empty field reads '' -> strength 0.
+            const t = st.text || '';
+            if (t !== lastText) { lastText = t; strength = pwStrength(t); }
+            const level=Math.ceil(strength*4);
             for(let i=0;i<4;i++) segs[i]=lerp(segs[i],i<level?1:0,dt*10);
 
             const segW=(st.w-12)/4,segH=8;
@@ -2562,33 +2592,43 @@ export function NotificationBell(o = {}) {
 // ===========================================================
 
 /** 15. Typewriter Field -- Characters appear one by one with cursor blink. */
+/** Typewriter Field (U4b DECORATE, re-home) -- an animated underline that grows
+ *  with the LIVE host input's text and a caret that flares on each new character.
+ *  Draws NO text (the real input shows its own; a decoration never re-renders the
+ *  host content) and reads only state.text's length -- zero-alloc, no measureText. */
 export function TypewriterField(o = {}) {
     const P = resolveTheme(o, { accent: '#6ee7b6', dim2: '#8888aa' });
-    const FONT = pickFont(o, "500 13px 'JetBrains Mono',monospace");
-    const text=pickText(o, 'Hello World');
-    let charIdx=0, timer=0, cursorBlink=0, typing=false;
-    let display='', dispW=0, lastIdx=-1; // substring rebuilt only when a char lands
+    const themed = !!(o.theme || o.colors);
+    const glow = themed ? rgbaOf(P.accent, .5) : 'rgba(110,231,182,.5)';
+    let lastLen=0, fill=0, spark=0, blink=0;
     return {
-        onToggle(checked){typing=checked;if(checked){charIdx=0;timer=0}},
         tick(c,dt,now,st) {
-            cursorBlink=(cursorBlink+dt*3)%2;
-            if(typing&&charIdx<text.length){timer+=dt;if(timer>.08){timer=0;charIdx++}}
+            const len=(st.text || '').length;
+            if(len>lastLen) spark=1;   // a new char landed -> caret pulse
+            lastLen=len;
+            blink=(blink+dt*3)%2;
+            spark=spark>0?spark-dt*3:0;
 
-            c.fillStyle='rgba(255,255,255,.04)';rr(c,0,0,st.w,st.h,6);c.fill();
-            c.strokeStyle='rgba(255,255,255,.06)';c.lineWidth=1;rr(c,0,0,st.w,st.h,6);c.stroke();
+            // Underline grows toward a fraction of the width set by text length
+            // (capped at ~24 chars = full width). No measureText -> zero-alloc.
+            const target=len===0?0:Math.min(len/24,1);
+            fill=lerp(fill,target,dt*8);
+            const y=st.h-3, x0=2, x1=2+(st.w-4)*fill;
 
-            c.fillStyle=P.accent;c.font=FONT;c.textAlign='left';c.textBaseline='middle';
-            // Rebuild the visible substring + its width only when a char is added.
-            if(charIdx!==lastIdx){lastIdx=charIdx;display=text.substring(0,charIdx);dispW=c.measureText(display).width;}
-            c.fillText(display,8,st.h/2);
+            c.strokeStyle='rgba(255,255,255,.08)';c.lineWidth=2;
+            c.beginPath();c.moveTo(x0,y);c.lineTo(st.w-2,y);c.stroke();
+            c.strokeStyle=P.accent;c.lineWidth=2;
+            c.beginPath();c.moveTo(x0,y);c.lineTo(x1,y);c.stroke();
 
-            // Cursor
-            if(cursorBlink<1){
-                c.fillStyle=P.accent;c.fillRect(9+dispW,st.h/2-8,1.5,16);
+            // Caret: a glow that flares on each keystroke, blinks when idle+focused.
+            if(spark>0.01){
+                c.globalAlpha=spark;c.fillStyle=glow;
+                c.beginPath();c.arc(x1,y,4+spark*3,0,PI2);c.fill();
+                c.globalAlpha=1;
             }
-
-            lbl(c,typing?'TYPING...':'TOGGLE TO TYPE',st.w/2,st.h+10,typing?P.accent:P.dim2);
-            if(st.focused)fr(c,st.w,st.h,6);
+            if(st.focused&&blink<1){
+                c.fillStyle=P.accent;c.fillRect(x1,y-9,1.5,12);
+            }
         },
     };
 }
@@ -2854,12 +2894,113 @@ export const UIFXRecipes3 = {
     ScratchReveal, TimerCountdown, PullRefresh,
 };
 
+// ===========================================================
+//  DECORATIONS (U4b) -- canvas AROUND a live element (decorateUIFX). Generic form
+//  feedback reading state.focused / state.valid / state.text; NONE draw the host's
+//  own content. Born themed + zero-alloc + t3-gated. See decisions/0004.
+// ===========================================================
+
+/** Focus Halo (U4b DECORATE) -- a soft glow around the host that breathes while
+ *  focused and fades on blur. Generic form feedback; reads only state.focused. */
+export function FocusHalo(o = {}) {
+    const P = resolveTheme(o, { accent: '#6ee7b6' });
+    let halo=0;  // 0..1 presence
+    return {
+        tick(c,dt,now,st) {
+            halo=lerp(halo, st.focused?1:0, dt*8);
+            if(halo<0.01) return;
+            const breathe=0.75+Math.sin(now/380)*0.25, r=8;
+            c.strokeStyle=P.accent;
+            for(let i=3;i>=1;i--){
+                c.globalAlpha=halo*breathe*(0.10*i);
+                c.lineWidth=i*2;
+                rr(c,-i*2,-i*2,st.w+i*4,st.h+i*4,r+i*2);c.stroke();
+            }
+            c.globalAlpha=halo;c.strokeStyle=P.accent;c.lineWidth=1.5;
+            rr(c,-1,-1,st.w+2,st.h+2,r);c.stroke();
+            c.globalAlpha=1;
+        },
+    };
+}
+
+/** Error Shake (U4b DECORATE) -- a red border that shakes on the state.valid
+ *  true->false edge and settles as the shake decays; a steady red border holds
+ *  while invalid. Draws only its OWN jitter (never moves the host). */
+export function ErrorShake(o = {}) {
+    const P = resolveTheme(o, { accent: '#ff6b6b' });
+    let wasValid=true, shake=0;
+    return {
+        tick(c,dt,now,st) {
+            if(wasValid && st.valid===false) shake=1;   // valid -> invalid edge
+            wasValid = st.valid !== false;
+            shake = shake>0 ? shake-dt*1.6 : 0;
+            if(shake<0.01 && st.valid!==false) return;   // nothing to show
+
+            const dx = shake>0 ? Math.sin(now/22)*shake*6 : 0;
+            const a = st.valid===false ? 0.9 : shake, r=8;
+            c.globalAlpha=a;c.strokeStyle=P.accent;c.lineWidth=2;
+            rr(c,dx,0,st.w,st.h,r);c.stroke();
+            c.globalAlpha=1;
+        },
+    };
+}
+
+/** Success Bloom (U4b DECORATE) -- a green ring + fixed-pool particle bloom on the
+ *  state.valid false->true edge (a fixed error resolved). Zero-alloc: typed-array
+ *  pool preallocated in the factory. */
+export function SuccessBloom(o = {}) {
+    const P = resolveTheme(o, { accent: '#6ee7b6' });
+    const N = 20;
+    const px=new Float32Array(N), py=new Float32Array(N), pvx=new Float32Array(N), pvy=new Float32Array(N), pa=new Float32Array(N);
+    let wasValid=true, ring=0;
+    function bloom(st){
+        ring=1;
+        const cx=st.w/2, cy=st.h/2;
+        for(let i=0;i<N;i++){
+            const ang=(i/N)*PI2, sp=40+(i%5)*8;
+            px[i]=cx; py[i]=cy; pvx[i]=Math.cos(ang)*sp; pvy[i]=Math.sin(ang)*sp; pa[i]=1;
+        }
+    }
+    return {
+        tick(c,dt,now,st) {
+            // false -> true edge = success. (undefined stays !== false: no edge.)
+            if(wasValid===false && st.valid!==false) bloom(st);
+            wasValid = st.valid !== false;
+
+            if(ring>0){
+                ring-=dt*1.4; if(ring<0) ring=0;
+                const cx=st.w/2, cy=st.h/2, rad=(1-ring)*st.w*0.6;
+                c.globalAlpha=ring;c.strokeStyle=P.accent;c.lineWidth=2;
+                c.beginPath();c.arc(cx,cy,rad,0,PI2);c.stroke();
+                c.globalAlpha=1;
+            }
+            c.fillStyle=P.accent;
+            for(let i=0;i<N;i++){
+                if(pa[i]<=0) continue;
+                px[i]+=pvx[i]*dt; py[i]+=pvy[i]*dt; pvx[i]*=0.92; pvy[i]*=0.92; pa[i]-=dt*1.4;
+                if(pa[i]<=0) continue;
+                c.globalAlpha=pa[i];
+                c.beginPath();c.arc(px[i],py[i],2.5,0,PI2);c.fill();
+            }
+            c.globalAlpha=1;
+        },
+    };
+}
+
+
 // U4a additions -- new native element types (CHECKBOX, PROGRESS). Kept out of the
 // Vol.1-3 historical snapshots above so those stay accurate; all recipes remain
 // reachable via RECIPES / RECIPE_META and their named exports regardless.
 export const UIFXRecipes4 = {
     TickDraw, IndeterminateScan,
     LiquidFill,
+};
+
+// U4b additions -- decorate-mode recipes (a canvas AROUND a live element). Kept out
+// of the Vol.1-3 + Vol.4 snapshots above; reachable via RECIPES / RECIPE_META and
+// their named exports regardless.
+export const UIFXRecipes5 = {
+    FocusHalo, ErrorShake, SuccessBloom,
 };
 
 
@@ -2921,6 +3062,9 @@ export default {
     ScratchReveal,
     TimerCountdown,
     PullRefresh,
+    FocusHalo,
+    ErrorShake,
+    SuccessBloom,
 };
 
 
@@ -2987,6 +3131,9 @@ export const RECIPES = Object.assign(Object.create(null), {
     scratchReveal: ScratchReveal,
     timerCountdown: TimerCountdown,
     pullRefresh: PullRefresh,
+    focusHalo: FocusHalo,
+    errorShake: ErrorShake,
+    successBloom: SuccessBloom,
 });
 
 /**
@@ -2994,8 +3141,10 @@ export const RECIPES = Object.assign(Object.create(null), {
  * a picker without hardcoding the list. A live array: registerRecipe() updates
  * it, so existing pickers keep working.
  *
- *   type       'toggle' | 'button' | 'slider' -- the native element it mounts on
- *   family     display grouping (Toggles, Buttons, Sliders, Knobs, ...)
+ *   type       'toggle'|'button'|'slider'|'checkbox'|'progress'|'knob' -- the
+ *              native element it mounts on (mountUIFX); or 'decorate' -- mounted
+ *              AROUND a live element via decorateUIFX (no native element created)
+ *   family     display grouping (Toggles, Buttons, Sliders, Knobs, Form, ...)
  *   themeable  accepts { colors, theme } (true for all as of U3b/1.4.0)
  *   motionSafe inherently-calm under prefers-reduced-motion (false for all -- U5)
  */
@@ -3041,18 +3190,21 @@ export const RECIPE_META = [
     { id: 'pillTabs', name: 'Pill Tabs', type: 'button', family: 'Controls', themeable: true, motionSafe: false },
     { id: 'stepper', name: 'Stepper', type: 'button', family: 'Controls', themeable: true, motionSafe: false },
     { id: 'radioOrbit', name: 'Radio Orbit', type: 'slider', family: 'Controls', themeable: true, motionSafe: false },
-    { id: 'passwordStrength', name: 'Password Strength', type: 'slider', family: 'Indicators', themeable: true, motionSafe: false },
+    { id: 'passwordStrength', name: 'Password Strength', type: 'decorate', family: 'Indicators', themeable: true, motionSafe: false },
     { id: 'waterLevel', name: 'Water Level', type: 'slider', family: 'Indicators', themeable: true, motionSafe: false },
     { id: 'heatMap', name: 'Heat Map', type: 'slider', family: 'Indicators', themeable: true, motionSafe: false },
     { id: 'dayNightToggle', name: 'Day Night Toggle', type: 'toggle', family: 'Mood', themeable: true, motionSafe: false },
     { id: 'reactionPicker', name: 'Reaction Picker', type: 'button', family: 'Mood', themeable: true, motionSafe: false },
     { id: 'notificationBell', name: 'Notification Bell', type: 'button', family: 'Mood', themeable: true, motionSafe: false },
-    { id: 'typewriterField', name: 'Typewriter Field', type: 'toggle', family: 'Feedback', themeable: true, motionSafe: false },
+    { id: 'typewriterField', name: 'Typewriter Field', type: 'decorate', family: 'Feedback', themeable: true, motionSafe: false },
     { id: 'soundWaveBtn', name: 'Sound Wave Btn', type: 'button', family: 'Feedback', themeable: true, motionSafe: false },
     { id: 'uploadProgress', name: 'Upload Progress', type: 'progress', family: 'Feedback', themeable: true, motionSafe: false },
     { id: 'scratchReveal', name: 'Scratch Reveal', type: 'slider', family: 'Fun', themeable: true, motionSafe: false },
     { id: 'timerCountdown', name: 'Timer Countdown', type: 'toggle', family: 'Fun', themeable: true, motionSafe: false },
     { id: 'pullRefresh', name: 'Pull Refresh', type: 'slider', family: 'Fun', themeable: true, motionSafe: false },
+    { id: 'focusHalo', name: 'Focus Halo', type: 'decorate', family: 'Form', themeable: true, motionSafe: false },
+    { id: 'errorShake', name: 'Error Shake', type: 'decorate', family: 'Form', themeable: true, motionSafe: false },
+    { id: 'successBloom', name: 'Success Bloom', type: 'decorate', family: 'Form', themeable: true, motionSafe: false },
 ];
 
 /** Names of every built-in recipe (the keys of RECIPES at load time). */
@@ -3061,7 +3213,11 @@ export const RECIPE_NAMES = Object.freeze(Object.keys(RECIPES));
 // The valid recipe/mount types, taken from the controller's UIType so the
 // registry's fail-closed check and the controller's mount guard are one source
 // of truth (they cannot drift as U4 adds types). Built once at load (cold).
-const VALID_META_TYPES = new Set(Object.values(UIType));
+// Plus the ONE non-UIType routing tag: 'decorate' (U4b) creates no native
+// element -- it is mounted AROUND a live element by decorateUIFX, not by
+// mountUIFX -- so it is not a UIType, but it is a valid RECIPE_META.type that
+// mountRecipe routes on (see below). It is the only member not from UIType.
+const VALID_META_TYPES = new Set([...Object.values(UIType), 'decorate']);
 
 /**
  * Register a custom recipe, or override a built-in. Instantly usable via
@@ -3144,13 +3300,18 @@ function nearestRecipe(id) {
 }
 
 /**
- * Resolve a recipe id to its factory + declared type and mount it via
- * mountUIFX. Fail closed:
+ * Resolve a recipe id to its factory + declared type and mount it. A hijack
+ * recipe (type toggle/button/slider/checkbox/progress/knob) mounts via mountUIFX,
+ * creating the native element inside `container`. A DECORATE recipe (type
+ * 'decorate', U4b) mounts via decorateUIFX, treating the first argument as the
+ * LIVE element to decorate (a canvas is placed AROUND it -- nothing is created
+ * inside it). Fail closed:
  *   - unknown id -> throw naming the nearest known id (did-you-mean).
  *   - options.type present and != the recipe's declared type -> throw.
  * options.type is consumed here, never forwarded as a mount option.
  *
- * @param {HTMLElement} container
+ * @param {HTMLElement} container  hijack: parent to mount into; decorate: the
+ *                                 live element to decorate.
  * @param {string} id
  * @param {Object} [options]
  * @returns {{ el: HTMLElement, destroy: Function }}
@@ -3178,6 +3339,13 @@ export function mountRecipe(container, id, options) {
     if (options && 'type' in options) {
         mountOptions = {};
         for (const k in options) if (k !== 'type') mountOptions[k] = options[k];
+    }
+    // A decoration is mounted AROUND a live element (no native element created),
+    // so it routes to decorateUIFX with `container` as the host element. Every
+    // other type is a hijack mount. mountUIFX keeps rejecting 'decorate' via its
+    // own _KNOWN_TYPES guard, so the two paths cannot cross.
+    if (type === 'decorate') {
+        return decorateUIFX(container, factory, mountOptions);
     }
     return mountUIFX(container, type, factory, mountOptions);
 }
