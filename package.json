@@ -1,6 +1,6 @@
 {
   "name": "@zakkster/lite-ui-fx",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "description": "Canvas-hijacked UI components with a pluggable recipe system. 50 built-in recipes across toggles, buttons, sliders, knobs, loaders, checkboxes, counters, and ratings.",
   "author": "Zahary Shinikchiev <shinikchiev@yahoo.com>",
   "license": "MIT",

@@ -5,6 +5,33 @@ All notable changes to `@zakkster/lite-ui-fx` are documented here.
 The format follows Keep a Changelog; this project adheres to Semantic
 Versioning.
 
+## [1.9.1] -- 2026-09-07
+
+Patch: a rendering fix for the ReactionPicker recipe.
+
+### Added
+
+none
+
+### Changed
+
+- demo (not shipped in the package): the `passwordStrength` showcase input is
+  seeded with a weak value (`abc`) instead of an already-maximal one, so typing
+  visibly moves the strength meter. The recipe itself was unchanged and correct.
+
+### Fixed
+
+- ReactionPicker: the emoji faces inherited the circle's translucent `fillStyle`
+  (0.04 alpha at rest), so a colour glyph rendered at 4% opacity and the faces
+  were invisible until hover. An opaque fill (`colors[i]`) is now set before each
+  glyph; all five faces render at rest, and hover still inflates and highlights
+  the selected one. One precomputed array read per glyph -- the frame path stays
+  zero-allocation (torture alloc = 0.8759765625 B/op, unchanged).
+
+### Removed
+
+none
+
 ## [1.9.0] -- 2026-09-07
 
 Grouped controls (roadmap U7): a third mount mode for a control that is N native

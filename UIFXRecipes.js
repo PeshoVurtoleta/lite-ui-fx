@@ -2571,8 +2571,14 @@ export function ReactionPicker(o = {}) {
                 c.fillStyle=active?colors30[i]:'rgba(255,255,255,.04)';
                 c.beginPath();c.arc(cx,cy-sizes[i]+10,sizes[i],0,PI2);c.fill();
 
-                // Emoji face (simplified) -- font from a const-string LUT
+                // Emoji face -- font from a const-string LUT. Set an OPAQUE fill
+                // first: the circle's fillStyle above is translucent (4% at rest),
+                // and a colour glyph inherits that alpha, so without this the faces
+                // are invisible until hover. colors[i] keeps a mono-emoji fallback
+                // tinted per reaction; a colour-emoji font ignores the hue and only
+                // takes the full alpha. Precomputed array read -- zero alloc.
                 c.font=FONTS[Math.round(sizes[i]*1.2)]||FONTS[48];c.textAlign='center';c.textBaseline='middle';
+                c.fillStyle=colors[i];
                 c.fillText(emojis[i],cx,cy-sizes[i]+10);
             }
 
