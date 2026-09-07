@@ -5,6 +5,42 @@ All notable changes to `@zakkster/lite-ui-fx` are documented here.
 The format follows Keep a Changelog; this project adheres to Semantic
 Versioning.
 
+## [1.8.0] -- 2026-09-07
+
+Documentation and demo (roadmap U6). No API, recipe, or behaviour change: the
+module code (`UIFXController.js`, `UIFXRecipes.js`) is byte-identical to 1.7.0.
+Closes finding U-12 (demos that reimplemented the library inline).
+
+### Added
+
+- `README.md` rewritten on the LiteSepforge blueprint spine: positioning H2 with
+  a runnable quick-start, table of contents, why/what-you-get, a mount-modes
+  deep-dive, an API reference with UIType/state/`RECIPE_META` constant tables, a
+  composability example, a zero-GC allocation table carrying the gated torture
+  GATE line, design-decision links, testing, what-this-is-not, ecosystem. Size
+  claims are measured (controller ~5.2 KB min+gzip, catalog of 56 recipes ~24 KB).
+- `demo/index.html`: one demo that consumes the package. It imports only the
+  public `.` and `./recipes` entry points and generates the gallery from
+  `RECIPE_META`, mounting each recipe by its declared type. Includes a theme
+  switcher, a reduced-motion toggle, and a `#profile` forced-reflow hook
+  (dev-only, dormant unless the URL carries `#profile`; a full drive of the hot
+  paths reports `violationCount 0`).
+- `test/docs.test.mjs`: an executable doc gate. It extracts every fenced js block
+  in `README.md`, rewrites the package specifiers to the local files, and imports
+  each under the DOM stub, so a drifted example fails CI; a control block with a
+  bad import name proves the gate can fail. The suite is now 205 node:test cases
+  across 18 suites.
+- `decisions/0006-docs-and-demo.md`.
+
+### Removed
+
+- The three inline demo pages (`demo/demo-lite-ui-fx.html`,
+  `demo/demo-lite-uifx-vol2.html`, `demo/demo-lite-uifx-vol3.html`) that
+  reimplemented the controller and recipes inline (U-12), replaced by the single
+  consuming `demo/index.html`.
+- The README's three CodePen "Live Demo" links and the competitor-size comparison
+  table (unmeasured claims; the shipped demo is the showcase).
+
 ## [1.7.0] -- 2026-09-07
 
 Host integration (roadmap U5). Two host-clock modes plus reduced-motion and a

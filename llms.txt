@@ -1,7 +1,7 @@
 # @zakkster/lite-ui-fx
 > Canvas-hijacked UI components with pluggable recipe system. 56 built-in recipes.
 
-VERSION 1.7.0
+VERSION 1.8.0
 
 ## Install
 npm i @zakkster/lite-ui-fx

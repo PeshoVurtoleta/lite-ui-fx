@@ -11,7 +11,7 @@ import { dirname, join } from 'node:path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
 
-const VERSION_EXPECTED = '1.7.0';
+const VERSION_EXPECTED = '1.8.0';
 
 describe('law', () => {
     it('ASCII-only source across tracked files (U+00D7 and U+00B5 excepted)', () => {

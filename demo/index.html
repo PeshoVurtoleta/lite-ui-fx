@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>lite-ui-fx recipe gallery</title>
+
+<!--
+  This demo CONSUMES the package. It imports only the two public entry points
+  (../UIFXController.js and ../UIFXRecipes.js) through the importmap below and
+  reimplements nothing. Every card in the gallery is generated from RECIPE_META
+  and mounted by its declared type, so a new recipe shows up here for free and a
+  drifted registry is visible immediately. (U6 / decision 0006.)
+
+  The three bare specifiers the package itself imports are mapped to their
+  node_modules entries; those three deps are transitively import-clean, so
+  nothing further needs mapping. lite-layout-profiler is DEV-ONLY: it is loaded
+  only when the URL carries #profile (see the bottom of the module script), so a
+  normal load never touches it. It is never a dependency and never shipped.
+-->
+<script type="importmap">
+{
+  "imports": {
+    "@zakkster/lite-ui-fx": "../UIFXController.js",
+    "@zakkster/lite-ui-fx/recipes": "../UIFXRecipes.js",
+    "@zakkster/lite-ticker": "../node_modules/@zakkster/lite-ticker/Ticker.js",
+    "@zakkster/lite-lerp": "../node_modules/@zakkster/lite-lerp/Lerp.js",
+    "@zakkster/lite-random": "../node_modules/@zakkster/lite-random/Random.js",
+    "@zakkster/lite-layout-profiler": "../../LiteLayoutProfiler/LayoutProfiler.js"
+  }
+}
+</script>
+
+<style>
+:root {
+    /* hex first, oklch() second: a browser that ignores oklch keeps the hex */
+    --bg: #0d0f14;
+    --bg: oklch(0.18 0.01 265);
+    --surface: #161a22;
+    --surface: oklch(0.22 0.012 265);
+    --line: #262c38;
+    --text: #e6e9ef;
+    --muted: #9aa4b2;
+    --accent: #8b5cf6;
+    --accent: oklch(0.62 0.19 292);
+    --radius: 0.75rem;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    background: #0d0f14;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+
+header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.5rem;
+    background: rgba(13, 15, 20, 0.85);
+    border-bottom: 1px solid var(--line);
+    backdrop-filter: blur(8px);
+}
+
+header h1 {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 650;
+    letter-spacing: 0.01em;
+}
+
+header h1 small {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 400;
+    color: var(--muted);
+    letter-spacing: 0;
+}
+
+.controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
+    margin-left: auto;
+    font-size: 0.85rem;
+}
+
+.controls label { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--muted); }
+
+.controls select {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 0.5rem;
+    padding: 0.35rem 0.55rem;
+    font: inherit;
+}
+
+main { padding: 1.5rem; max-width: 82rem; margin: 0 auto; }
+
+section { margin-bottom: 2.5rem; }
+
+section > h2 {
+    margin: 0 0 1rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--line);
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+    gap: 1rem;
+}
+
+.card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem 0.75rem 0.85rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    min-height: 8.5rem;
+    justify-content: center;
+    transition: border-color 0.15s ease;
+}
+
+@media (hover: hover) {
+    .card:hover { border-color: var(--accent); }
+}
+
+.card .host {
+    position: relative;   /* decorate overlays are absolute; anchor them to the host box */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 5rem;
+}
+
+.card .host input[type="text"],
+.card .host input[type="password"] {
+    width: 8.5rem;
+    padding: 0.5rem 0.6rem;
+    background: #0d0f14;
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 0.5rem;
+    font: inherit;
+}
+
+.card .name { font-size: 0.8rem; color: var(--text); text-align: center; }
+
+.card .meta {
+    font-size: 0.66rem;
+    color: var(--muted);
+    letter-spacing: 0.03em;
+}
+
+.card .badge {
+    display: inline-block;
+    font-size: 0.6rem;
+    color: var(--accent);
+    border: 1px solid var(--line);
+    border-radius: 0.3rem;
+    padding: 0 0.3rem;
+    margin-left: 0.3rem;
+}
+
+#profile-flag {
+    display: none;
+    font-size: 0.72rem;
+    color: #34d399;
+    padding: 0.2rem 0.55rem;
+    border: 1px solid #34d399;
+    border-radius: 0.4rem;
+}
+</style>
+</head>
+<body>
+
+<header>
+    <h1>lite-ui-fx <small>56 recipes, generated from RECIPE_META, importing only public exports</small></h1>
+    <div class="controls">
+        <span id="profile-flag">#profile: reflow gate armed</span>
+        <label>Theme
+            <select id="theme">
+                <option value="none">none (byte-identical)</option>
+                <option value="violet">violet</option>
+                <option value="ocean">ocean</option>
+                <option value="ember">ember</option>
+            </select>
+        </label>
+        <label><input type="checkbox" id="reduce"> reduced motion</label>
+        <span class="meta" id="count"></span>
+    </div>
+</header>
+
+<main id="gallery"></main>
+
+<script type="module">
+import { decorateUIFX } from '@zakkster/lite-ui-fx';
+import { mountRecipe, RECIPES, RECIPE_META, RECIPE_NAMES } from '@zakkster/lite-ui-fx/recipes';
+
+// --- cached control refs (never look one up in a handler; demo-audit law) ----
+const $gallery = document.getElementById('gallery');
+const $theme = document.getElementById('theme');
+const $reduce = document.getElementById('reduce');
+const $count = document.getElementById('count');
+const $profileFlag = document.getElementById('profile-flag');
+
+$count.textContent = RECIPE_NAMES.length + ' recipes';
+
+// --- theme presets: the { light, mid, dark } shape all fx packages share -----
+const THEMES = {
+    none: null,
+    violet: { light: '#c4b5fd', mid: '#8b5cf6', dark: '#4c1d95' },
+    ocean: { light: '#7dd3fc', mid: '#0ea5e9', dark: '#0c4a6e' },
+    ember: { light: '#fca5a5', mid: '#ef4444', dark: '#7f1d1d' },
+};
+
+// Family order for a stable, readable gallery (any family RECIPE_META adds that
+// is missing here still renders -- it is appended after the known ones).
+const FAMILY_ORDER = [
+    'Toggles', 'Buttons', 'Sliders', 'Knobs', 'Progress', 'Checkboxes',
+    'Loaders', 'Counters', 'Rating', 'Controls', 'Indicators', 'Mood',
+    'Feedback', 'Fun', 'Form',
+];
+
+// --- per-recipe canvas geometry (the element box; the canvas adds PAD each side).
+// The controller's type defaults (knob + progress = 200x28) squash every ROUND
+// visual into a 28px strip, so dials, rings and gauges get an explicit,
+// shape-appropriate box here; everything else takes a sensible per-type size. ---
+const PAD = 20;
+const TYPE_SIZE = {
+    toggle: [64, 36], button: [150, 50], slider: [188, 34],
+    checkbox: [46, 46], knob: [92, 92], progress: [150, 44],
+};
+const SIZE = {
+    volumeKnob: [92, 92], compassKnob: [92, 92],
+    ringProgress: [120, 92], liquidFill: [104, 92], signalMeter: [110, 82],
+    batteryGauge: [150, 64], uploadProgress: [150, 72], timerCountdown: [96, 96],
+};
+
+// Per-decorate host input: a seeded value + a placeholder that invites the real
+// interaction each recipe reflects (all stay fully usable -- type into any of them).
+const DECOR_INPUT = {
+    passwordStrength: { type: 'password', value: 'Tr0ub4dour&3', ph: 'password' },
+    typewriterField: { type: 'text', value: 'lite-ui-fx', ph: 'type here' },
+    focusHalo: { type: 'text', value: '', ph: 'focus me' },
+    errorShake: { type: 'text', value: 'check', ph: 'validation' },
+    successBloom: { type: 'text', value: 'ok', ph: 'validation' },
+};
+
+let mounted = [];        // live instances, so a reduced-motion toggle can reach them
+let progressInsts = [];  // { inst, phase }: progress is host-driven, animated below
+let decorInsts = [];     // { id, inst, input }: form-feedback recipes, showcased below
+
+// --- mount ONE recipe by its declared type (registry-driven, type-correct) ---
+function mountOne(meta, host, theme) {
+    const base = theme ? { theme } : {};
+    base.padding = PAD;
+    if (meta.type === 'decorate') {
+        // Decorate mode wants a real, visible host element. Build one input and
+        // let decorateUIFX wrap a canvas around it -- the host stays byte-identical.
+        const cfg = DECOR_INPUT[meta.id] || { type: 'text', value: 'hello', ph: '' };
+        const input = document.createElement('input');
+        input.type = cfg.type;
+        input.value = cfg.value;
+        input.placeholder = cfg.ph;
+        input.setAttribute('aria-label', meta.name);
+        host.appendChild(input);
+        const inst = decorateUIFX(input, RECIPES[meta.id], base);
+        decorInsts.push({ id: meta.id, inst, input });
+        return inst;
+    }
+    // Hijack mode: mountRecipe asserts META.type and routes to mountUIFX.
+    const opts = Object.assign({}, base);
+    const dims = SIZE[meta.id] || TYPE_SIZE[meta.type];
+    if (dims) { opts.width = dims[0]; opts.height = dims[1]; }
+    if (meta.type === 'slider' || meta.type === 'knob') opts.value = 0.5;
+    const inst = mountRecipe(host, meta.id, opts);
+    if (meta.type === 'progress') {
+        inst.setValue(0.65);                                   // seed a value to paint
+        progressInsts.push({ inst, phase: progressInsts.length * 1.3 });
+    }
+    return inst;
+}
+
+// --- build the whole gallery from RECIPE_META (a section per family) ---------
+function buildGallery() {
+    for (const inst of mounted) inst.destroy();
+    mounted = [];
+    progressInsts = [];
+    decorInsts = [];
+    $gallery.textContent = '';
+
+    const theme = THEMES[$theme.value];
+    const reduced = $reduce.checked;
+
+    const byFamily = new Map();
+    for (const meta of RECIPE_META) {
+        if (!byFamily.has(meta.family)) byFamily.set(meta.family, []);
+        byFamily.get(meta.family).push(meta);
+    }
+    const families = [...FAMILY_ORDER.filter((f) => byFamily.has(f)),
+        ...[...byFamily.keys()].filter((f) => !FAMILY_ORDER.includes(f))];
+
+    for (const family of families) {
+        const section = document.createElement('section');
+        const h2 = document.createElement('h2');
+        h2.textContent = family + ' (' + byFamily.get(family).length + ')';
+        section.appendChild(h2);
+
+        const grid = document.createElement('div');
+        grid.className = 'grid';
+        section.appendChild(grid);
+        $gallery.appendChild(section);   // attach BEFORE mounting so a decorate host
+                                         // has a real offset box (offsetWidth != 0);
+                                         // otherwise its overlay sizes to 0 + 2*PAD
+
+        for (const meta of byFamily.get(family)) {
+            const card = document.createElement('div');
+            card.className = 'card';
+
+            const hostBox = document.createElement('div');
+            hostBox.className = 'host';
+            card.appendChild(hostBox);
+
+            const name = document.createElement('div');
+            name.className = 'name';
+            name.textContent = meta.name;
+            if (meta.motionSafe) {
+                const badge = document.createElement('span');
+                badge.className = 'badge';
+                badge.textContent = 'calm';
+                name.appendChild(badge);
+            }
+            card.appendChild(name);
+
+            const metaLine = document.createElement('div');
+            metaLine.className = 'meta';
+            metaLine.textContent = meta.type;
+            card.appendChild(metaLine);
+
+            grid.appendChild(card);
+
+            const inst = mountOne(meta, hostBox, theme);
+            inst.state.reducedMotion = reduced;   // host owns the toggle (U5)
+            mounted.push(inst);
+        }
+    }
+}
+
+// --- live reduced-motion toggle: flip the flag on every mounted instance -----
+// No re-mount needed -- reducedMotion is a state flag the recipe reads (U5).
+function applyReduced() {
+    const reduced = $reduce.checked;
+    for (const inst of mounted) inst.state.reducedMotion = reduced;
+}
+
+$theme.addEventListener('change', buildGallery);   // theme change re-mounts (cold)
+$reduce.addEventListener('change', applyReduced);
+
+buildGallery();
+
+// --- showcase drivers. Progress recipes are setValue-driven, and the form-feedback
+// decorations are EDGE-triggered (valid <-> invalid, focus). The host owns that
+// state (decision 0005), so the demo cycles it here to keep the gallery alive. All
+// of it writes value/state only -- no layout READ -- so it stays reflow-free. Every
+// field is still fully usable: type into any of them and the recipe reflects it. --
+setInterval(() => {
+    const t = performance.now();
+    for (const p of progressInsts) {
+        p.inst.setValue(0.5 + 0.42 * Math.sin(t / 1400 + p.phase));
+    }
+    for (const d of decorInsts) {
+        const s = d.inst.state;
+        if (d.id === 'focusHalo') {
+            // a real focus wins; otherwise breathe the halo on and off
+            if (document.activeElement !== d.input) s.focused = Math.sin(t / 1200) > 0;
+        } else if (d.id === 'errorShake') {
+            s.valid = Math.floor(t / 2600) % 2 === 0;            // flip -> shake on the invalid edge
+        } else if (d.id === 'successBloom') {
+            s.valid = Math.floor((t + 1300) / 2600) % 2 === 0;   // offset -> bloom on the valid edge
+        }
+    }
+}, 90);
+
+// --- #profile: the forced-reflow gate (dev-only, dormant unless the hash) -----
+// lite-layout-profiler ALLOCATES and patches ~400 setters on purpose; it is
+// fenced behind the flag, never a dependency, never in files[]. A clean demo
+// drives every scene and reports violationCount === 0.
+if (location.hash === '#profile') {
+    $profileFlag.style.display = 'inline-block';
+    import('@zakkster/lite-layout-profiler').then((m) => {
+        // The gallery is already mounted. Mount is a COLD path: decorateUIFX must
+        // read the host's offset box once to place its overlay -- an expected,
+        // one-time read, not a frame killer. The gate profiles the HOT paths that
+        // must stay reflow-free: 56 recipes ticking every frame, pointer hover,
+        // and the reduced-motion toggle. That is the U-11 guarantee made visible.
+        const profiler = m.createLayoutProfiler();
+        window.__layout = profiler;
+
+        // Interaction 1: reduced motion both ways (state-flag writes, no layout).
+        $reduce.checked = true; applyReduced();
+        $reduce.checked = false; applyReduced();
+
+        // Interaction 2: pointer hover across every card, dispatched ON the native
+        // control the controller listens to (a wrapper parent would never receive
+        // non-bubbling pointerenter). onHover reads a rect CACHED on pointerenter,
+        // never per move -- arithmetic only after.
+        for (const host of $gallery.querySelectorAll('.host')) {
+            const target = host.querySelector('input, button, progress');
+            if (!target) continue;
+            target.dispatchEvent(new PointerEvent('pointerenter'));
+            target.dispatchEvent(new PointerEvent('pointermove', { clientX: 8, clientY: 8 }));
+            target.dispatchEvent(new PointerEvent('pointerleave'));
+        }
+
+        // Let several frames of every recipe's tick run, then report the verdict.
+        let frames = 0;
+        (function sample() {
+            if (++frames < 10) { requestAnimationFrame(sample); return; }
+            const n = profiler.violationCount;
+            window.__layoutViolations = n;
+            console.log('[#profile] hot-path violationCount = ' + n +
+                (n === 0 ? '  (clean)' : '  FAIL -- see __layout.violations'));
+        })();
+    }).catch((err) => {
+        console.warn('[#profile] layout profiler unavailable:', err && err.message);
+    });
+}
+</script>
+</body>
+</html>
