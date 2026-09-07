@@ -19,7 +19,7 @@
 
 import assert from 'node:assert/strict';
 import { setMaxListeners } from 'node:events';
-import { mountUIFX, decorateUIFX, UIType, makeContainer, raf, FakeTicker } from './harness.mjs';
+import { mountUIFX, decorateUIFX, mountUIFXGroup, GroupType, groupItems, UIType, makeContainer, raf, FakeTicker } from './harness.mjs';
 
 const N = 100;
 const BAD = 50;   // the component whose recipe throws mid-soak
@@ -162,5 +162,34 @@ export async function runT5() {
     driven.destroy();
     assert.equal(raf.pending(), 0, 'no shared RAF left by driven mode');
 
-    return { components: N, quarantined: BAD, errCount, callerTicked: M, driven: CF };
+    // -------------------------------------------------------------------------
+    //  U7 group scale: 20 grouped controls of 5 items each (cycling the four group
+    //  types) ride the ONE shared ticker -- exactly one RAF for 20 groups (100
+    //  native elements). Selection is walked with setIndex; teardown drains to 0.
+    // -------------------------------------------------------------------------
+    const GTYPES = [GroupType.RADIO, GroupType.TABS, GroupType.STEPPER, GroupType.RATING];
+    const GN = 20;
+    const gcount = new Array(GN);
+    const ginsts = new Array(GN);
+    for (let i = 0; i < GN; i++) {
+        const c = { n: 0 };
+        gcount[i] = c;
+        const gt = GTYPES[i % GTYPES.length];
+        ginsts[i] = mountUIFXGroup(container, gt, () => ({ tick() { c.n++; } }), { items: groupItems(5) });
+    }
+    // 20 groups on ONE shared ticker -> exactly one RAF chain (not 20).
+    assert.equal(raf.pending(), 1, '20 groups -> exactly ONE shared RAF chain');
+    let gt0 = 2000;
+    const GF = 8;
+    for (let f = 0; f < GF; f++) {
+        gt0 += 16;
+        raf.step(gt0);
+        // Walk each group's selection while it ticks (setIndex fires onSelect once).
+        for (let i = 0; i < GN; i++) ginsts[i].setIndex(f % 5);
+    }
+    for (let i = 0; i < GN; i++) assert.equal(gcount[i].n, GF, 'group ' + i + ' ticked to ' + GF + ' on the shared clock');
+    for (let i = 0; i < GN; i++) ginsts[i].destroy();
+    assert.equal(raf.pending(), 0, 'shared RAF chain fully torn down after group destroy');
+
+    return { components: N, quarantined: BAD, errCount, callerTicked: M, driven: CF, groups: GN };
 }

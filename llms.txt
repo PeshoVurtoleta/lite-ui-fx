@@ -1,7 +1,7 @@
 # @zakkster/lite-ui-fx
-> Canvas-hijacked UI components with pluggable recipe system. 56 built-in recipes.
+> Canvas-hijacked UI components with pluggable recipe system. 57 built-in recipes.
 
-VERSION 1.8.0
+VERSION 1.9.0
 
 ## Install
 npm i @zakkster/lite-ui-fx
@@ -12,17 +12,19 @@ Canvas overlay (z-index:1) renders visuals via a recipe factory function.
 Recipe = { tick(), init?(), onHover?(), onClick?(), onToggle?(), onDrag?(), destroy?() }
 
 ## Import -- Controller
-import { mountUIFX, decorateUIFX, UIType } from '@zakkster/lite-ui-fx';
+import { mountUIFX, decorateUIFX, mountUIFXGroup, UIType, GroupType } from '@zakkster/lite-ui-fx';
 
-## Import -- Recipes (one ./recipes subpath, 56 total, tree-shakeable)
+## Import -- Recipes (one ./recipes subpath, 57 total, tree-shakeable)
 import { SwarmToggle, MagneticButton, SparkSlider } from '@zakkster/lite-ui-fx/recipes';
 import { PendulumToggle, HeartbeatButton, AuroraSlider } from '@zakkster/lite-ui-fx/recipes';
 import { VolumeKnob, WaterLevel, TimerCountdown } from '@zakkster/lite-ui-fx/recipes';
+import { PillTabs, SegmentedSlide, RadioOrbit, BubbleRating } from '@zakkster/lite-ui-fx/recipes'; // U7 group recipes
 
 ## Import -- Recipe registry (data-driven pickers)
 import { RECIPES, RECIPE_META, RECIPE_NAMES, registerRecipe, mountRecipe } from '@zakkster/lite-ui-fx/recipes';
 // RECIPES id->factory (null-proto); RECIPE_META { id, name, type, family, themeable, motionSafe }; RECIPE_NAMES frozen.
 // mountRecipe(container, id, options?): resolves id fail-closed (did-you-mean), asserts META.type, mounts.
+//   Routes by type: a UIType -> mountUIFX; 'decorate' -> decorateUIFX; a group type -> mountUIFXGroup (needs items).
 
 ## Mount -- two modes
 // HIJACK (mountUIFX): creates a native element (opacity:0) inside `container` and
@@ -42,6 +44,26 @@ deco.destroy();         // removes ONLY the overlay + its listeners; host untouc
 // setValue/setChecked are HIJACK-ONLY: they throw in decorate mode (a decoration
 // reflects the host; it does not drive it).
 
+## Mount -- GROUP mode (U7): N native elements, one canvas, one recipe
+// mountUIFXGroup: a grouped control -- radios in a fieldset, tabs in a tablist, a
+// spinbutton, or a rating radiogroup -- sharing ONE canvas and one recipe. The
+// native elements own selection + keyboard + a11y; the recipe reads state.index/
+// state.count + the per-item geometry lanes. Additive: mountUIFX/decorateUIFX
+// are untouched, and onSelect is a NINTH, group-only recipe hook.
+const group = mountUIFXGroup(container, GroupType.RADIO, RadioOrbit, { items: ['A','B','C','D'], index: 0 });
+group.els        // the native elements (radios/tabs, or the single spinbutton)
+group.state      // read-only; state.index is the live selection
+group.index      // convenience getter over state.index
+group.setIndex(i)// select item i in [0,count-1]: updates native + state, fires onSelect ONCE (no focus steal)
+group.tick(dtMs) // driven mode only
+group.destroy()  // remove wrapper + listeners; idempotent
+// GroupType.RADIO   -> <fieldset role=radiogroup> + N <input type=radio>; native roving arrow keys
+// GroupType.TABS    -> <div role=tablist> + N <button role=tab>; APG roving tabindex + Left/Right/Home/End
+// GroupType.STEPPER -> one <input type=number> spinbutton (count = steps); native Up/Down + typing
+// GroupType.RATING  -> radiogroup of N radios (rating semantics); native roving
+// onSelect(index, state): recipe hook fired EXACTLY once per selection change.
+// setValue/setChecked do not exist on a group -- selection is setIndex.
+
 ## Options (4th arg; unknown option or recipe-hook keys throw a did-you-mean -- fail closed)
 width, height, padding=40, label   // geometry + accessible label
 value     // slider start, number 0..1 (default 0.5); out-of-range or non-number throws
@@ -60,6 +82,10 @@ driven    // U5 host clock: boolean; true = no ticker/RAF, the host calls instan
 // the host-clock keys ticker/driven (a decoration wants clock control too). The
 // hijack-only keys (width/height/value/checked/disabled/knobMode/announce/label)
 // throw in decorate mode -- geometry comes from the host, value is read from it.
+// mountUIFXGroup (U7) options: items(string[] >=2, REQUIRED -- length is the item/
+// step count), index(integer initial selection, default 0), label, width, height,
+// padding, disabled, seed, colors, theme, text, font, ticker, driven. The hijack-
+// only keys (value/checked/knobMode/announce) throw -- a group uses index, not value.
 
 ## Host clock (U5) -- three mutually-exclusive modes, both mount modes
 // default (neither option): the shared ref-counted ticker -- one RAF for all
@@ -82,6 +108,14 @@ UIType.KNOB     -> <input type="range"> -> state.val, arrows native + knobMode p
 (decorate)      -> NO native element created; a canvas AROUND a live host (decorateUIFX). Not a UIType --
                    RECIPE_META.type 'decorate' routes mountRecipe to decorateUIFX. State: focused + text + valid.
 
+## Group Types (U7) -- N native elements + one canvas (mountUIFXGroup)
+GroupType.RADIO   -> <fieldset role=radiogroup> + N <input type=radio>; native roving; state.index/count
+GroupType.TABS    -> <div role=tablist> + N <button role=tab>; APG roving tabindex + arrows/Home/End
+GroupType.STEPPER -> one <input type=number> spinbutton (count = steps); native Up/Down + typing
+GroupType.RATING  -> radiogroup of N radios (rating semantics); native roving
+// Not UITypes: RECIPE_META.type 'radio'|'tabs'|'stepper'|'rating' routes mountRecipe to mountUIFXGroup.
+// onSelect(index, state) is the ninth, group-only recipe hook (mountUIFX/decorateUIFX reject it).
+
 ## State Object (provided to tick every frame)
 { hover, active, focused, toggled, indeterminate, disabled, val, w, h, padding, dpr,
   reducedMotion, budget }
@@ -90,8 +124,12 @@ UIType.KNOB     -> <input type="range"> -> state.val, arrows native + knobMode p
 // budget (U5): 0..1 frame budget, 1 at ~60fps, lower as frames lengthen; budget-aware
 //   recipes shed work (particles/glow) when it drops.
 // decorate mode also adds: text (host value string), valid (host validity boolean).
+// GROUP mode (U7) is a SUPERSET of this state PLUS: index (selected 0..count-1),
+//   count, hoverIndex (item under pointer, -1 none), labels (string[] items),
+//   itemX/itemY/itemW/itemH (Float32Array per-item geometry lanes, read by index).
+//   The scalar value fields (val/toggled/indeterminate) are neutral for a group.
 
-## 56 Built-in Recipes
+## 57 Built-in Recipes
 
 ### Vol. 1 -- 10 recipes
 Toggles: SwarmToggle, LiquidToggle, NeonPulseToggle
@@ -124,6 +162,15 @@ Progress (UIType.PROGRESS): LiquidFill
 Form feedback (decorateUIFX): FocusHalo, ErrorShake, SuccessBloom
 // Re-homed to decorate mode (type 'decorate'): PasswordStrength (reads the live
 // input's text), TypewriterField (an underline that grows with the typed text).
+
+### U7 -- grouped controls (mountUIFXGroup: N native elements + one canvas)
+Tabs (GroupType.TABS): PillTabs, SegmentedSlide (new in U7)
+Radio (GroupType.RADIO): RadioOrbit
+Stepper (GroupType.STEPPER): Stepper
+Rating (GroupType.RATING): BubbleRating
+// PillTabs/Stepper/RadioOrbit/BubbleRating RE-HOME from their vol.3 single-element
+// fakes to real group types, so their native arrow-key selection is now correct;
+// SegmentedSlide is new. Selection is state.index; onSelect(index, state) fires once.
 
 ## Writing Custom Recipes
 See UIFX-RECIPE-GUIDE.md (included in package).
@@ -162,3 +209,12 @@ See UIFX-RECIPE-GUIDE.md (included in package).
   offset box and removed on destroy (host byte-identical, additive-only). State is
   wired from the host's own events (state.text/state.valid at event time). It is the
   second mount mode + the surface the enrichment decorations build on.
+- U7 grouped controls (mountUIFXGroup): the THIRD mount mode -- N native elements +
+  one canvas + one recipe. RADIO/RATING = a fieldset radiogroup of N radios (native
+  roving); TABS = a role=tablist of N role=tab buttons (hand-written APG roving
+  tabindex + arrows/Home/End); STEPPER = one <input type=number> spinbutton. The
+  recipe reads state.index/count + itemX/itemY/itemW/itemH geometry lanes; onSelect
+  (index, state) is the ninth, group-only hook, fired once per change; setIndex(i)
+  selects programmatically (fires onSelect once, no focus steal). Additive: the
+  single-element API is byte-identical; the four vol.3 fakes (PillTabs/Stepper/
+  RadioOrbit/BubbleRating) re-home to real group types, SegmentedSlide is new.

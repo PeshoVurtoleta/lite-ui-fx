@@ -22,7 +22,7 @@ import { Ticker } from '@zakkster/lite-ticker';
 
 // Three-place version sync: this constant, package.json "version", and the
 // VERSION line in llms.txt must always match. /release keeps them locked.
-export const VERSION = '1.8.0';
+export const VERSION = '1.9.0';
 
 // ---------------------------------------------------------
 //  SHARED TICKER (ref-counted, one RAF for all UI components)
@@ -190,6 +190,52 @@ export const UIType = Object.freeze({
 // The valid mount types, derived once from UIType so the controller guard, the
 // recipe registry, and the d.ts never drift apart. Cold: read only at mount.
 const _KNOWN_TYPES = new Set(Object.values(UIType));
+
+
+// ---------------------------------------------------------
+//  GROUP TYPES (U7) -- N native elements, one canvas, one recipe
+// ---------------------------------------------------------
+
+// A grouped control is N native elements sharing ONE canvas and ONE recipe
+// (decisions/0007). Unlike a UIType (one element) a GroupType routes to
+// mountUIFXGroup, which lays out `count` items in a horizontal strip and gives
+// the recipe a SoA view of them: state.index (selected), state.count, and the
+// itemX/itemY/itemW/itemH Float32Array lanes. onSelect(index, state) is the
+// ninth, group-only recipe hook (mountUIFX/decorateUIFX reject it -- fail closed).
+/** @enum {string} */
+export const GroupType = Object.freeze({
+    RADIO: 'radio',      // fieldset + N <input type=radio>; native roving selection
+    TABS: 'tabs',        // role=tablist + N role=tab buttons; roving tabindex + arrows
+    STEPPER: 'stepper',  // one <input type=number> spinbutton; native Up/Down
+    RATING: 'rating',    // radiogroup of N radios; native roving selection
+});
+
+// Valid group types, derived once from GroupType so the group mount guard and
+// the recipe registry stay one source of truth (0003 pattern). Cold.
+const _KNOWN_GROUP_TYPES = new Set(Object.values(GroupType));
+
+// A group recipe accepts the eight existing hooks PLUS onSelect. onSelect is
+// group-only: it is absent from KNOWN_HOOKS, so mountUIFX/decorateUIFX reject a
+// recipe carrying it (fail closed), and it is present here so a group recipe may.
+const KNOWN_GROUP_HOOKS = ['init', 'tick', 'onHover', 'onLeave', 'onClick', 'onToggle', 'onDrag', 'onSelect', 'destroy'];
+
+// Options valid on a group mount. `items` (the per-item labels) is required; the
+// initial selection is `index` (an integer, not the hijack float `value`). The
+// hijack-only keys (value/checked/knobMode/announce) are absent -> did-you-mean.
+const GROUP_OPTIONS = ['items', 'index', 'label', 'width', 'height', 'padding', 'disabled', 'seed', 'colors', 'theme', 'text', 'font', 'ticker', 'driven'];
+
+// Per-group-type default item box [w, h]. The strip is `count` items wide for the
+// multi-element types; STEPPER is a single spinbutton, so its pair is the whole
+// control's default box (its `count` pips are drawn inside that width).
+const _GROUP_ITEM_DEFAULT = {
+    radio: [56, 56],
+    tabs: [84, 38],
+    rating: [40, 44],
+    stepper: [132, 46],   // total box (single element), not per item
+};
+
+// Monotonic id for unique radio `name` grouping across concurrent mounts. Cold.
+let _groupUid = 0;
 
 
 // =========================================================
@@ -1159,6 +1205,484 @@ export function decorateUIFX(el, recipeFactory, options = {}) {
         if (tickerAcquired) releaseTicker();   // release ONLY the shared ticker we acquired
         if (acCreated) ac.abort();
         if (canvasAppended) canvas.remove();
+        throw err;
+    }
+}
+
+// =========================================================
+//  mountUIFXGroup -- The third mount mode (N native elements, one canvas)
+// =========================================================
+
+/**
+ * Mount a grouped control: N native elements (radios in a fieldset, tabs in a
+ * tablist, a spinbutton, a rating radiogroup) sharing ONE canvas and one recipe
+ * (decisions/0007). The native elements own selection + keyboard + a11y; the
+ * canvas paints the group by reading state.index/state.count and the per-item
+ * geometry lanes. Additive to mountUIFX/decorateUIFX -- neither is touched.
+ *
+ * @param {HTMLElement} container      Parent to mount into.
+ * @param {string}      groupType      One of GroupType (radio|tabs|stepper|rating).
+ * @param {Function}    recipeFactory  (options) => Recipe (may add onSelect).
+ * @param {Object}      options        { items:string[] (>=2, required), index=0, ... }
+ * @returns {{ els:HTMLElement[], canvas, wrapper, state, index, setIndex, tick, destroy }}
+ */
+export function mountUIFXGroup(container, groupType, recipeFactory, options = {}) {
+    // =====================================================================
+    //  PHASE 1 -- VALIDATION ONLY (fail closed; mirrors mountUIFX). No DOM,
+    //  no ticker, no recipe.init until every check below has passed.
+    // =====================================================================
+
+    if (!container || typeof container.appendChild !== 'function') {
+        throw new Error('mountUIFXGroup: container must be a DOM element');
+    }
+    if (!_KNOWN_GROUP_TYPES.has(groupType)) {
+        throw new Error('mountUIFXGroup: groupType must be one of GroupType.RADIO, TABS, STEPPER, RATING');
+    }
+    for (const k in options) {
+        if (!Object.prototype.hasOwnProperty.call(options, k)) continue;
+        if (GROUP_OPTIONS.indexOf(k) === -1) {
+            throw new Error(_didYouMean('mountUIFXGroup: unknown option', k, GROUP_OPTIONS));
+        }
+    }
+
+    // items: the per-item labels. Required, an array of >=2 strings (a group of
+    // one is not a group). Its length IS the item/step count. Fail closed.
+    const items = options.items;
+    if (!Array.isArray(items) || items.length < 2 || items.some((s) => typeof s !== 'string')) {
+        throw new Error('mountUIFXGroup: option "items" must be an array of >=2 label strings');
+    }
+    const count = items.length;
+
+    // index: the initial selection, an integer in [0, count-1] (default 0). This
+    // is the group's value -- distinct from the hijack float "value" (fail closed).
+    let initialIndex = options.index === undefined ? 0 : options.index;
+    if (typeof initialIndex !== 'number' || !Number.isInteger(initialIndex) ||
+        initialIndex < 0 || initialIndex >= count) {
+        throw new Error('mountUIFXGroup: option "index" must be an integer in [0, items.length-1]');
+    }
+
+    const disabled = options.disabled === undefined ? false : !!options.disabled;
+    const width = options.width;
+    const height = options.height;
+    const padding = options.padding === undefined ? 40 : options.padding;
+    const label = options.label === undefined ? '' : options.label;
+
+    // Theming options (0002), same validators as the other two mounts. Cold.
+    const _theme = options.theme;
+    if (_theme !== undefined) {
+        if (_theme === null || typeof _theme !== 'object' ||
+            typeof _theme.light !== 'string' || typeof _theme.mid !== 'string' ||
+            typeof _theme.dark !== 'string' || Object.keys(_theme).length !== 3) {
+            throw new Error('mountUIFXGroup: option "theme" must be { light, mid, dark } of color strings');
+        }
+    }
+    const _colors = options.colors;
+    if (_colors !== undefined &&
+        (!Array.isArray(_colors) || _colors.some((c) => typeof c !== 'string'))) {
+        throw new Error('mountUIFXGroup: option "colors" must be an array of color strings');
+    }
+    if (options.text !== undefined && typeof options.text !== 'string') {
+        throw new Error('mountUIFXGroup: option "text" must be a string');
+    }
+    if (options.font !== undefined && typeof options.font !== 'string') {
+        throw new Error('mountUIFXGroup: option "font" must be a string');
+    }
+    if (options.seed !== undefined &&
+        (typeof options.seed !== 'number' || !Number.isFinite(options.seed))) {
+        throw new Error('mountUIFXGroup: option "seed" must be a finite number');
+    }
+
+    // Host clock (U5, 0005) -- identical three modes as the other two mounts.
+    const callerTicker = options.ticker;
+    if (options.driven !== undefined && typeof options.driven !== 'boolean') {
+        throw new Error('mountUIFXGroup: option "driven" must be a boolean');
+    }
+    const driven = options.driven === true;
+    if (callerTicker !== undefined) {
+        if (driven) {
+            throw new Error('mountUIFXGroup: options "ticker" and "driven" are mutually exclusive');
+        }
+        if (!callerTicker || typeof callerTicker.add !== 'function') {
+            throw new Error('mountUIFXGroup: option "ticker" must be a ticker with an .add(fn) method');
+        }
+    }
+
+    if (typeof recipeFactory !== 'function') {
+        throw new Error('mountUIFXGroup: recipeFactory must be a function');
+    }
+    const recipe = recipeFactory(options);
+    if (!recipe || typeof recipe !== 'object') {
+        throw new Error('mountUIFXGroup: recipe must be an object');
+    }
+    if (typeof recipe.tick !== 'function') {
+        throw new Error('mountUIFXGroup: recipe.tick must be a function');
+    }
+    for (const k in recipe) {
+        if (!Object.prototype.hasOwnProperty.call(recipe, k)) continue;
+        if (typeof recipe[k] === 'function' && KNOWN_GROUP_HOOKS.indexOf(k) === -1) {
+            throw new Error(_didYouMean('mountUIFXGroup: unknown recipe hook', k, KNOWN_GROUP_HOOKS));
+        }
+    }
+
+    // =====================================================================
+    //  PHASE 2 -- SIDE EFFECTS (fail-closed unwind, mirrors mountUIFX).
+    // =====================================================================
+    let wrapperAppended = false;
+    let acCreated = false;
+    let tickerAcquired = false;
+    let wrapper = null;
+    let ac = null;
+    let removeTick = null;
+    let _moveTab = null;   // TABS roving mover, shared with setIndex (not on state)
+
+    try {
+    // -- Geometry. A horizontal strip of `count` item slots. Multi-element types
+    //    (radio/tabs/rating) size the strip = count * itemW; STEPPER is one
+    //    spinbutton whose default box holds `count` pips. width/height override
+    //    the total. All geometry is ARITHMETIC (no getBoundingClientRect): it
+    //    works headless and forces ZERO reflow (better than the U-11 one-read). --
+    const def = _GROUP_ITEM_DEFAULT[groupType];
+    const _single = groupType === GroupType.STEPPER;
+    const w = width  || (_single ? def[0] : def[0] * count);
+    const h = height || def[1];
+    let dpr = window.devicePixelRatio || 1;
+
+    // Per-item geometry lanes, preallocated once (the recipe reads them by index;
+    // zero per-frame allocation). Uniform slots: itemW = w/count across the strip.
+    const iw = w / count;
+    const itemX = new Float32Array(count);
+    const itemY = new Float32Array(count);
+    const itemW = new Float32Array(count);
+    const itemH = new Float32Array(count);
+    for (let i = 0; i < count; i++) {
+        itemX[i] = i * iw; itemY[i] = 0; itemW[i] = iw; itemH[i] = h;
+    }
+
+    // -- Build the native group. `root` holds the interactive elements; `els` is
+    //    the array of them (radios/buttons, or the single number input). --
+    const uid = _groupUid++;
+    let root;
+    const els = [];
+    if (groupType === GroupType.RADIO || groupType === GroupType.RATING) {
+        root = document.createElement('fieldset');
+        root.setAttribute('role', 'radiogroup');
+        if (label) root.setAttribute('aria-label', label);
+        Object.assign(root.style, {
+            position: 'relative', display: 'inline-block',
+            width: `${w}px`, height: `${h}px`,
+            margin: '0', padding: '0', border: 'none', minWidth: '0',
+        });
+        const name = 'uifx-group-' + uid;
+        for (let i = 0; i < count; i++) {
+            const r = document.createElement('input');
+            r.type = 'radio';
+            r.name = name;
+            r.setAttribute('aria-label', items[i]);
+            if (i === initialIndex) r.checked = true;
+            if (disabled) r.disabled = true;
+            Object.assign(r.style, {
+                position: 'absolute', top: '0', left: `${itemX[i]}px`,
+                width: `${itemW[i]}px`, height: `${h}px`,
+                opacity: '0', margin: '0', cursor: 'pointer', zIndex: '2',
+            });
+            root.appendChild(r);
+            els.push(r);
+        }
+    } else if (groupType === GroupType.TABS) {
+        root = document.createElement('div');
+        root.setAttribute('role', 'tablist');
+        if (label) root.setAttribute('aria-label', label);
+        Object.assign(root.style, {
+            position: 'relative', display: 'inline-block',
+            width: `${w}px`, height: `${h}px`,
+        });
+        for (let i = 0; i < count; i++) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.setAttribute('role', 'tab');
+            b.textContent = items[i];  // accessible name
+            b.setAttribute('aria-selected', i === initialIndex ? 'true' : 'false');
+            b.tabIndex = i === initialIndex ? 0 : -1;  // roving tabindex
+            if (disabled) b.disabled = true;
+            Object.assign(b.style, {
+                position: 'absolute', top: '0', left: `${itemX[i]}px`,
+                width: `${itemW[i]}px`, height: `${h}px`,
+                opacity: '0', margin: '0', padding: '0', border: 'none',
+                background: 'transparent', cursor: 'pointer', zIndex: '2',
+                WebkitAppearance: 'none', appearance: 'none',
+            });
+            root.appendChild(b);
+            els.push(b);
+        }
+    } else {  // STEPPER -- one spinbutton across the whole box; count pips drawn inside
+        root = document.createElement('div');
+        Object.assign(root.style, {
+            position: 'relative', display: 'inline-block',
+            width: `${w}px`, height: `${h}px`,
+        });
+        const inp = document.createElement('input');
+        inp.type = 'number';
+        inp.min = '0';
+        inp.max = String(count - 1);
+        inp.step = '1';
+        inp.value = String(initialIndex);
+        if (label) inp.setAttribute('aria-label', label);
+        if (disabled) inp.disabled = true;
+        Object.assign(inp.style, {
+            position: 'absolute', top: '0', left: '0',
+            width: `${w}px`, height: `${h}px`,
+            opacity: '0', margin: '0', padding: '0', border: 'none',
+            background: 'transparent', cursor: 'pointer', zIndex: '2',
+            WebkitAppearance: 'none', appearance: 'none',
+        });
+        root.appendChild(inp);
+        els.push(inp);
+    }
+
+    // -- Canvas overlay (DPR-aware), sized to the strip + padding. --
+    const canvas = document.createElement('canvas');
+    const cw = w + padding * 2;
+    const ch = h + padding * 2;
+    canvas.width = cw * dpr;
+    canvas.height = ch * dpr;
+    Object.assign(canvas.style, {
+        position: 'absolute', top: '0', left: '0',
+        width: `${cw}px`, height: `${ch}px`,
+        transform: `translate(-${padding}px, -${padding}px)`,
+        pointerEvents: 'none', zIndex: '1',
+    });
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    wrapper = document.createElement('div');
+    Object.assign(wrapper.style, {
+        position: 'relative', display: 'inline-block',
+        width: `${w}px`, height: `${h}px`,
+    });
+    wrapper.appendChild(root);
+    wrapper.appendChild(canvas);
+    container.appendChild(wrapper);
+    wrapperAppended = true;
+
+    const rmq = _reducedMotionQuery();
+
+    // -- State: a SUPERSET of the scalar per-frame state (every field present, so
+    //    a single-element recipe never breaks) PLUS the group fields. The single-
+    //    value fields (val/toggled/indeterminate) are neutral here; a group uses
+    //    index/count. Geometry lanes are references (zero per-frame alloc). --
+    const state = {
+        hover: false,
+        active: false,
+        focused: false,
+        toggled: false,       // scalar-superset neutral (a group has no single toggle)
+        indeterminate: false, // scalar-superset neutral
+        disabled,
+        val: 0,               // scalar-superset neutral (a group uses index/count)
+        reducedMotion: rmq ? !!rmq.matches : false,
+        budget: 1,
+        w, h, padding, dpr,
+        // group fields:
+        index: initialIndex,  // selected item (0..count-1)
+        count,                // number of items/steps
+        hoverIndex: -1,       // item under the pointer, -1 when none
+        labels: items,        // the item label strings (reference; cold-set)
+        itemX, itemY, itemW, itemH,  // per-item geometry lanes (Float32Array)
+    };
+    const pointer = { x: -999, y: -999, vx: 0, vy: 0 };
+
+    if (recipe.init) recipe.init(ctx, w, h, padding);
+
+    // -- Events (all via AbortController). --
+    ac = new AbortController();
+    acCreated = true;
+    const signal = ac.signal;
+
+    // Selection: set state.index, fire onSelect exactly once when asked. A
+    // programmatic native write emits no native event, so setIndex's explicit
+    // fire is the only one (no double fire) -- same discipline as setValue (U4a).
+    function select(i, fireHook) {
+        state.index = i;
+        if (fireHook && recipe.onSelect) recipe.onSelect(i, state);
+    }
+
+    // Per-element hover -> hoverIndex, and group hover. Cold pointer handlers on
+    // the native elements (canvas is pointerEvents:none). Zero layout reads.
+    // Iterate els.length, NOT count: STEPPER is one native element for N steps.
+    for (let i = 0; i < els.length; i++) {
+        const idx = i;
+        els[i].addEventListener('pointerenter', () => {
+            state.hover = true; state.hoverIndex = idx;
+            if (recipe.onHover) recipe.onHover(state, pointer);
+        }, { signal });
+        els[i].addEventListener('pointerleave', () => {
+            state.hoverIndex = -1;
+            if (recipe.onLeave) recipe.onLeave(state, pointer);
+        }, { signal });
+    }
+    // Group focus tracking (focusin/out bubble; any element focused == focused).
+    root.addEventListener('focusin', () => { state.focused = true; }, { signal });
+    root.addEventListener('focusout', () => { state.focused = false; state.hover = false; }, { signal });
+
+    // Per-type selection wiring.
+    if (groupType === GroupType.RADIO || groupType === GroupType.RATING) {
+        // Native radios: arrow keys move focus AND check the newly-focused radio,
+        // firing 'change' on it (one change per move). Click checks + fires change.
+        for (let i = 0; i < count; i++) {
+            const idx = i;
+            els[i].addEventListener('change', () => {
+                if (els[idx].checked) select(idx, true);
+            }, { signal });
+        }
+    } else if (groupType === GroupType.TABS) {
+        // Hand-written APG roving tabindex: only the selected tab is tabbable;
+        // Left/Right (+ Up/Down) and Home/End move selection + focus.
+        _moveTab = function moveTab(i, focusIt) {
+            for (let j = 0; j < count; j++) {
+                els[j].tabIndex = j === i ? 0 : -1;
+                els[j].setAttribute('aria-selected', j === i ? 'true' : 'false');
+            }
+            if (focusIt && els[i].focus) els[i].focus();
+            select(i, true);
+        };
+        for (let i = 0; i < count; i++) {
+            const idx = i;
+            els[i].addEventListener('click', () => _moveTab(idx, true), { signal });
+        }
+        root.addEventListener('keydown', (e) => {
+            let ni = state.index;
+            if (e.key === 'ArrowRight' || e.key === 'ArrowDown') ni = (state.index + 1) % count;
+            else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') ni = (state.index - 1 + count) % count;
+            else if (e.key === 'Home') ni = 0;
+            else if (e.key === 'End') ni = count - 1;
+            else return;
+            e.preventDefault();
+            _moveTab(ni, true);
+        }, { signal });
+    } else {  // STEPPER
+        // Native spinbutton: ArrowUp/Down + typing fire 'input'. Read + clamp to
+        // [0,count-1]; 'change' (blur) would double-fire, so listen 'input' only.
+        els[0].addEventListener('input', () => {
+            let v = parseInt(els[0].value, 10);
+            if (!Number.isFinite(v)) return;         // mid-edit empty field: ignore
+            if (v < 0) v = 0; else if (v > count - 1) v = count - 1;
+            if (String(v) !== els[0].value) els[0].value = String(v);  // reflect the clamp
+            select(v, true);
+        }, { signal });
+    }
+
+    // -- DPR re-read on display change (cold; absent matchMedia is a silent
+    //    no-op -- fail closed). --
+    if (typeof window.matchMedia === 'function') {
+        const mq = window.matchMedia('(resolution: ' + dpr + 'dppx)');
+        mq.addEventListener('change', () => {
+            const nd = window.devicePixelRatio || 1;
+            dpr = nd;
+            canvas.width = cw * nd;
+            canvas.height = ch * nd;
+            ctx.setTransform(nd, 0, 0, nd, 0, 0);
+            state.dpr = nd;
+        }, { signal });
+    }
+    if (rmq) {
+        rmq.addEventListener('change', () => { state.reducedMotion = !!rmq.matches; }, { signal });
+    }
+
+    // -- Render loop. ONE named frame body; three clock modes invoke it with no
+    //    wrapper; same budget update + quarantine-on-throw as the other mounts. --
+    let destroyed = false;
+    let quarantined = false;
+
+    function frame(dtMs) {
+        if (destroyed || quarantined) return;
+        const dt = dtMs / 1000;
+        const now = performance.now();
+        if (dt > 0) {
+            let inst = _TARGET_DT / dt;
+            if (inst > 1) inst = 1; else if (inst < 0) inst = 0;
+            state.budget += (inst - state.budget) * _BUDGET_SMOOTH;
+        }
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, cw, ch);
+        ctx.save();
+        ctx.translate(padding, padding);  // Origin = the strip's top-left
+        try {
+            recipe.tick(ctx, dt, now, state, pointer);
+        } catch (err) {
+            quarantined = true;
+            console.error('mountUIFXGroup: recipe.tick threw for groupType "' + groupType + '"; group quarantined', err);
+            ctx.restore();
+            ctx.clearRect(0, 0, cw, ch);
+            return;
+        }
+        ctx.restore();
+    }
+
+    if (driven) {
+        // no ticker acquired; removeTick stays null
+    } else if (callerTicker !== undefined) {
+        removeTick = callerTicker.add(frame);
+    } else {
+        const ticker = acquireTicker();
+        tickerAcquired = true;
+        removeTick = ticker.add(frame);
+    }
+
+    // -- Public API --
+    return {
+        /** The native interactive elements (radios / tabs, or the single spinbutton). */
+        els,
+        /** The overlay canvas. */
+        canvas,
+        /** The wrapper div. */
+        wrapper,
+        /** Current state (read-only reference; state.index is the live selection). */
+        state,
+        /** The selected index right now (convenience over state.index). */
+        get index() { return state.index; },
+
+        /** Drive one frame by hand (U5). Callable ONLY in { driven: true } mode. */
+        tick: driven ? frame : _drivenOnly,
+
+        /**
+         * Programmatically select item i in [0, count-1]: updates the native
+         * element(s), state.index, and fires onSelect exactly once (a programmatic
+         * native write emits no native event, so no double fire). Does NOT steal
+         * focus. Fail closed on a bad index.
+         */
+        setIndex(i) {
+            if (destroyed) return;
+            if (typeof i !== 'number' || !Number.isInteger(i) || i < 0 || i >= count) {
+                throw new Error('setIndex: i must be an integer in [0, count-1]');
+            }
+            if (groupType === GroupType.RADIO || groupType === GroupType.RATING) {
+                els[i].checked = true;  // no native 'change' from a programmatic set
+            } else if (groupType === GroupType.TABS) {
+                _moveTab(i, false);  // roving update without focus; fires onSelect
+                return;
+            } else {  // STEPPER
+                els[0].value = String(i);  // no native 'input' from a programmatic set
+            }
+            select(i, true);
+        },
+
+        /** Destroy everything. Idempotent. */
+        destroy() {
+            if (destroyed) return;
+            destroyed = true;
+            ac.abort();
+            if (removeTick) removeTick();
+            if (recipe.destroy) recipe.destroy();
+            if (tickerAcquired) releaseTicker();
+            wrapper.remove();
+        },
+    };
+    } catch (err) {
+        // A phase-2 step threw (realistically recipe.init). Unwind ONLY what was
+        // acquired, reverse order, each flag-guarded. recipe.destroy is NOT called.
+        if (removeTick) removeTick();
+        if (tickerAcquired) releaseTicker();
+        if (acCreated) ac.abort();
+        if (wrapperAppended) wrapper.remove();
         throw err;
     }
 }

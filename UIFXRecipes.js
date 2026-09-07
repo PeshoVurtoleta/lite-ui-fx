@@ -35,7 +35,7 @@
 
 import { lerp, clamp, easeOut, easeIn, easeInOut } from '@zakkster/lite-lerp';
 import { Random } from '@zakkster/lite-random';
-import { mountUIFX, decorateUIFX, UIType } from './UIFXController.js';
+import { mountUIFX, decorateUIFX, mountUIFXGroup, UIType, GroupType } from './UIFXController.js';
 
 
 // ---------------------------------------------------------
@@ -1800,51 +1800,57 @@ export function GlitchCounter(o = {}) {
 
 /** 20. Bubble Rating -- 5 bubbles inflate based on slider position. Click pops them. */
 export function BubbleRating(o = {}) {
+    // U7 GROUP (rating): N native radios (a rating is "pick 1 of N stars"); native
+    // arrow keys move the selection (st.index), 0007. Bubbles fill to st.index+1;
+    // onSelect pops the newly-chosen bubble. Fixed pool + preallocated sizes lane.
     const { seed = 42 } = o;
     const P = resolveTheme(o, { accent: '#38bdf8', dim: '#9999b8' });
     const rng = new Random(seed);
-    const R5 = ['0 / 5', '1 / 5', '2 / 5', '3 / 5', '4 / 5', '5 / 5']; // const labels
     const POPS = 32;
     const pop = [];
     for (let i = 0; i < POPS; i++) pop[i] = { x: 0, y: 0, vx: 0, vy: 0, life: 0 };
-    const sizes = new Float32Array(5);
-    let lastW = 200;
-    function spawnPops(cx) {
+    // per-bubble size lane, sized from st.count on first tick (the mount owns count,
+    // 0007) -- a one-time grow absorbed by warm-up, then zero-alloc forever.
+    let sizes = new Float32Array((o.items && o.items.length) || 5);
+    function spawnPops(cx, cy) {
         for (let j = 0; j < 5; j++) {
             for (let i = 0; i < POPS; i++) {
                 const p = pop[i];
                 if (p.life <= 0) {
-                    const a = rng.range(0, Math.PI * 2), v = rng.range(20, 50);
-                    p.x = cx; p.y = 14; p.vx = Math.cos(a) * v; p.vy = Math.sin(a) * v; p.life = 1;
+                    const a = rng.range(0, PI2), v = rng.range(20, 50);
+                    p.x = cx; p.y = cy; p.vx = Math.cos(a) * v; p.vy = Math.sin(a) * v; p.life = 1;
                     break;
                 }
             }
         }
     }
     return {
+        onSelect(i, st) {
+            // Pop the newly selected bubble at its real centre (geometry lane).
+            spawnPops(st.itemX[i] + st.itemW[i] / 2, st.h / 2);
+        },
         tick(ctx, dt, now, st) {
-            lastW = st.w;
-            const rating = Math.round(st.val * 5);
-            const gap = st.w / 5;
+            const filled = st.index + 1;   // index 0 -> 1 filled bubble
+            if (sizes.length < st.count) sizes = new Float32Array(st.count);   // one-time grow (cold)
 
-            for (let i = 0; i < 5; i++) {
-                const active = i < rating;
+            for (let i = 0; i < st.count; i++) {
+                const active = i < filled;
                 const targetSz = active ? 12 : 6;
                 sizes[i] = lerp(sizes[i] || 6, targetSz, dt * 8);
-                const cx = gap * i + gap / 2, cy = st.h / 2;
+                const cx = st.itemX[i] + st.itemW[i] / 2, cy = st.h / 2;
 
                 // Bubble -- const color, active alpha via globalAlpha
                 if (active) { ctx.fillStyle = P.accent; ctx.globalAlpha = 0.3 + sizes[i] / 20; }
                 else { ctx.fillStyle = 'rgba(255,255,255,.05)'; ctx.globalAlpha = 1; }
-                ctx.beginPath(); ctx.arc(cx, cy, sizes[i], 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(cx, cy, sizes[i], 0, PI2); ctx.fill();
                 ctx.globalAlpha = 1;
                 ctx.strokeStyle = active ? P.accent : 'rgba(255,255,255,.08)';
-                ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, sizes[i], 0, Math.PI * 2); ctx.stroke();
+                ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, sizes[i], 0, PI2); ctx.stroke();
 
                 // Highlight
                 if (active) {
                     ctx.fillStyle = 'rgba(255,255,255,.15)';
-                    ctx.beginPath(); ctx.arc(cx - 3, cy - 3, 3, 0, Math.PI * 2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(cx - 3, cy - 3, 3, 0, PI2); ctx.fill();
                 }
             }
 
@@ -1856,19 +1862,12 @@ export function BubbleRating(o = {}) {
                 p.x += p.vx * dt; p.y += p.vy * dt; p.life -= 3 * dt;
                 if (p.life <= 0) continue;
                 ctx.globalAlpha = p.life;
-                ctx.beginPath(); ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(p.x, p.y, 1.5, 0, PI2); ctx.fill();
             }
             ctx.globalAlpha = 1;
 
-            label(ctx, R5[rating], st.w / 2, st.h + 12, rating >= 4 ? P.accent : P.dim);
+            label(ctx, st.labels[st.index], st.w / 2, st.h + 12, filled >= st.count ? P.accent : P.dim);
             if (st.focused) focusRing(ctx, st.w, st.h, 4);
-        },
-        onDrag(val) {
-            const rating = Math.round(val * 5);
-            // Pop the newly activated bubble (position derived from st.w via lastW)
-            const gap = lastW / 5;
-            const cx = gap * (rating - 1) + gap / 2;
-            spawnPops(cx);
         },
     };
 }
@@ -2180,122 +2179,154 @@ export function LiquidFill(o = {}) {
 
 /** 6. Pill Tabs -- 3 segmented tabs with sliding indicator. */
 export function PillTabs(o = {}) {
+    // U7 GROUP (tabs): N native role=tab buttons, one canvas. The recipe reads the
+    // live selection (st.index) and the per-item geometry lanes (st.itemX/itemW)
+    // -- selection + arrow-key roving are owned by the native tablist (0007), not
+    // faked here. The indicator springs toward the selected tab's real box.
     const P = resolveTheme(o, { accent: '#c4b5fd', accent2: '#a78bfa', dim: '#9999b8' });
     const themed = !!(o.theme || o.colors);
     const indFill = themed ? rgbaOf(P.accent2, .12) : 'rgba(167,139,250,.12)';
     const indStroke = themed ? rgbaOf(P.accent2, .25) : 'rgba(167,139,250,.25)';
     const FONT = pickFont(o, "600 11px 'Space Grotesk',sans-serif");
-    let indicatorX=0, indicatorW=0, selected=0;
-    const labels=['Alpha','Beta','Gamma'];
+    let indX = -1, indW = 0;   // indX < 0 snaps to the selected tab on frame 1
     return {
-        onClick(x,y,st) {
-            const idx=Math.floor(x/(st.w/3));
-            selected=clamp(idx,0,2);
-        },
         tick(c,dt,now,st) {
-            const tw=st.w/3;
-            const tx=selected*tw, targetW=tw;
-            indicatorX=lerp(indicatorX,tx,dt*12);
-            indicatorW=lerp(indicatorW,targetW,dt*12);
+            const sel = st.index;
+            const tx = st.itemX[sel], tw = st.itemW[sel];
+            if (indX < 0) { indX = tx; indW = tw; }
+            else { indX = lerp(indX, tx, dt * 12); indW = lerp(indW, tw, dt * 12); }
 
             // Background
             c.fillStyle='rgba(255,255,255,.03)';rr(c,0,0,st.w,st.h,st.h/2);c.fill();
 
-            // Indicator
+            // Indicator (springs to the real selected-tab box)
             c.fillStyle=indFill;c.strokeStyle=indStroke;c.lineWidth=1;
-            rr(c,indicatorX+2,2,indicatorW-4,st.h-4,st.h/2-2);c.fill();c.stroke();
+            rr(c,indX+2,2,indW-4,st.h-4,st.h/2-2);c.fill();c.stroke();
 
-            // Labels
+            // Labels (from the native tabs' own text, via st.labels)
             c.font=FONT;c.textAlign='center';c.textBaseline='middle';
-            for(let i=0;i<3;i++){
-                c.fillStyle=i===selected?P.accent:P.dim;
-                c.fillText(labels[i],tw*i+tw/2,st.h/2);
+            for(let i=0;i<st.count;i++){
+                c.fillStyle=i===sel?P.accent:(i===st.hoverIndex?'#c4c4dc':P.dim);
+                c.fillText(st.labels[i],st.itemX[i]+st.itemW[i]/2,st.h/2);
             }
             if(st.focused)fr(c,st.w,st.h,st.h/2);
         },
     };
 }
 
-/** 7. Stepper -- +/- buttons with spring counter. */
+/** 6b. Segmented Slide (U7 GROUP tabs) -- a solid pill slides under the selected
+ *  segment. New in U7; reads st.index + the geometry lanes, zero-alloc tick. */
+export function SegmentedSlide(o = {}) {
+    const P = resolveTheme(o, { accent: '#38bdf8', accent2: '#0ea5e9', dim: '#9999b8' });
+    const themed = !!(o.theme || o.colors);
+    const pill = themed ? rgbaOf(P.accent, .92) : 'rgba(56,189,248,.92)';
+    const FONT = pickFont(o, "600 11px 'Space Grotesk',sans-serif");
+    let sx = -1, sw = 0;
+    return {
+        tick(c,dt,now,st) {
+            const sel = st.index;
+            const tx = st.itemX[sel], tw = st.itemW[sel];
+            if (sx < 0) { sx = tx; sw = tw; }
+            else { sx = lerp(sx, tx, dt * 14); sw = lerp(sw, tw, dt * 14); }
+
+            c.fillStyle='rgba(255,255,255,.05)';rr(c,0,0,st.w,st.h,st.h/2);c.fill();
+            c.fillStyle=pill;rr(c,sx+3,3,sw-6,st.h-6,(st.h-6)/2);c.fill();
+
+            c.font=FONT;c.textAlign='center';c.textBaseline='middle';
+            for(let i=0;i<st.count;i++){
+                c.fillStyle=i===sel?'#0b0b12':(i===st.hoverIndex?'#e2e2f0':P.dim);
+                c.fillText(st.labels[i],st.itemX[i]+st.itemW[i]/2,st.h/2);
+            }
+            if(st.focused)fr(c,st.w,st.h,st.h/2);
+        },
+    };
+}
+
+/** 7. Stepper (U7 GROUP: stepper) -- one native <input type=number> spinbutton;
+ *  ArrowUp/Down + typing drive st.index natively (0007). The recipe draws the
+ *  current step label + a pip row (one per step, filled to the selection) and
+ *  flashes on change via onSelect. Zero-alloc tick. */
 export function Stepper(o = {}) {
     const P = resolveTheme(o, { accent: '#6ee7b6', accent2: '#ff6b6b', dim: '#e2e2f0' });
-    const themed = !!(o.theme || o.colors);
-    const minusFlash = themed ? rgbaOf(P.accent2, .15) : 'rgba(255,100,100,.15)';
-    const plusFlash = themed ? rgbaOf(P.accent, .15) : 'rgba(110,231,182,.15)';
-    const FONT = pickFont(o, "700 18px 'JetBrains Mono',monospace");
-    let count=0,displayCount=0,flashDir=0,flashTimer=0;
+    const FONT = pickFont(o, "700 20px 'JetBrains Mono',monospace");
+    let flash = 0;   // brief highlight after a step change (onSelect)
     return {
-        onClick(x,y,st) {
-            if(x<st.w*0.33){count=Math.max(0,count-1);flashDir=-1;}
-            else if(x>st.w*0.66){count++;flashDir=1;}
-            flashTimer=0.3;
-        },
+        onSelect() { flash = 0.35; },
         tick(c,dt,now,st) {
-            displayCount=lerp(displayCount,count,dt*10);
-            flashTimer=Math.max(0,flashTimer-dt);
+            flash = flash > 0 ? flash - dt : 0;
 
             // Background
             c.fillStyle='rgba(255,255,255,.04)';rr(c,0,0,st.w,st.h,10);c.fill();
 
-            // Minus zone
-            const third=st.w/3;
-            c.fillStyle=flashDir===-1&&flashTimer>0?minusFlash:'rgba(255,255,255,.03)';
-            rr(c,2,2,third-4,st.h-4,8);c.fill();
-            c.fillStyle=P.accent2;c.font=FONT;c.textAlign='center';c.textBaseline='middle';
-            c.fillText('\u2212',third/2,st.h/2);
+            // Up/Down chevron affordances (native spinbutton owns the behaviour)
+            c.strokeStyle=P.accent;c.lineWidth=2;c.globalAlpha=0.7;
+            const rx=st.w-14;
+            c.beginPath();c.moveTo(rx-4,12);c.lineTo(rx,8);c.lineTo(rx+4,12);c.stroke();
+            c.strokeStyle=P.accent2;
+            c.beginPath();c.moveTo(rx-4,st.h-12);c.lineTo(rx,st.h-8);c.lineTo(rx+4,st.h-12);c.stroke();
+            c.globalAlpha=1;
 
-            // Plus zone
-            c.fillStyle=flashDir===1&&flashTimer>0?plusFlash:'rgba(255,255,255,.03)';
-            rr(c,third*2+2,2,third-4,st.h-4,8);c.fill();
-            c.fillStyle=P.accent;c.fillText('+',third*2+third/2,st.h/2);
+            // Step pips (one per step, filled up to the current index)
+            for(let i=0;i<st.count;i++){
+                const cx=st.itemX[i]+st.itemW[i]/2;
+                c.globalAlpha=i===st.index?1:0.3;
+                c.fillStyle=i<=st.index?P.accent:'rgba(255,255,255,.25)';
+                c.beginPath();c.arc(cx,st.h-7,2.5,0,PI2);c.fill();
+            }
+            c.globalAlpha=1;
 
-            // Counter
-            c.fillStyle=P.dim;c.font="700 20px 'JetBrains Mono',monospace";
-            c.fillText(Math.round(displayCount),st.w/2,st.h/2);
+            // Current step label, brightening on change
+            c.fillStyle=flash>0?P.accent:P.dim;c.font=FONT;
+            c.textAlign='center';c.textBaseline='middle';
+            c.fillText(st.labels[st.index],st.w/2,st.h/2-3);
 
             if(st.focused)fr(c,st.w,st.h,10);
         },
     };
 }
 
-/** 8. Radio Orbit -- 4 options arranged in a circle. Slider picks one. */
+/** 8. Radio Orbit (U7 GROUP: radio) -- N options in a circle over N native
+ *  radios; native arrow keys move the selection (st.index), 0007. The recipe
+ *  reads st.count/st.index/st.labels; per-node glow is a preallocated lane. */
 export function RadioOrbit(o = {}) {
-    let selectedGlow=new Float32Array(4);
-    const names=['A','B','C','D'];
-    // `colors` is the 4-node palette; `theme` seeds it. Normalised to length 4 so
-    // the body's colors[i] stays valid for any override.
+    // per-node glow lane, sized from st.count on first tick (the mount owns count,
+    // 0007) -- a one-time grow absorbed by warm-up, then zero-alloc forever.
+    let glow = new Float32Array((o.items && o.items.length) || 4);
+    // palette: `colors` is it; `theme` seeds it; else the default. Indexed base[i%bn]
+    // so a node colour stays valid for any node count / override (no fixed array).
     const base = o.colors ? o.colors
         : (o.theme ? [o.theme.light, o.theme.mid, o.theme.dark, o.theme.light] : ['#ff6b6b','#fbbf24','#6ee7b6','#38bdf8']);
-    const colors = base.length >= 4 ? base : [base[0], base[1 % base.length], base[2 % base.length], base[3 % base.length]];
-    const OPTS=['OPTION A','OPTION B','OPTION C','OPTION D']; // const (was 'OPTION '+name concat)
+    const bn = base.length;
     return {
         tick(c,dt,now,st) {
-            const sel=Math.round(st.val*3);
+            const sel=st.index, n=st.count;
+            if (glow.length < n) glow = new Float32Array(n);   // one-time grow (cold)
             const cx=st.w/2,cy=st.h/2,R=Math.min(cx,cy)-12;
 
             // Center
             c.fillStyle='rgba(255,255,255,.03)';c.beginPath();c.arc(cx,cy,8,0,PI2);c.fill();
 
-            for(let i=0;i<4;i++){
-                const a=-Math.PI/2+i*Math.PI/2;
+            for(let i=0;i<n;i++){
+                const a=-Math.PI/2+i*(PI2/n);
                 const ox=cx+Math.cos(a)*R, oy=cy+Math.sin(a)*R;
                 const active=i===sel;
-                selectedGlow[i]=lerp(selectedGlow[i],active?1:0,dt*10);
+                const col=base[i%bn];
+                glow[i]=lerp(glow[i],active?1:(i===st.hoverIndex?0.4:0),dt*10);
 
                 // Orbit line -- const white, alpha via globalAlpha
-                c.strokeStyle='#ffffff';c.globalAlpha=.03+selectedGlow[i]*.05;c.lineWidth=1;
+                c.strokeStyle='#ffffff';c.globalAlpha=.03+glow[i]*.05;c.lineWidth=1;
                 c.beginPath();c.moveTo(cx,cy);c.lineTo(ox,oy);c.stroke();c.globalAlpha=1;
 
                 // Node
-                const sz=6+selectedGlow[i]*4;
-                c.fillStyle=active?colors[i]:'rgba(255,255,255,.06)';
+                const sz=6+glow[i]*4;
+                c.fillStyle=active?col:'rgba(255,255,255,.06)';
                 c.beginPath();c.arc(ox,oy,sz,0,PI2);c.fill();
-                if(active){c.strokeStyle=colors[i];c.lineWidth=1;c.beginPath();c.arc(ox,oy,sz+3,0,PI2);c.stroke()}
+                if(active){c.strokeStyle=col;c.lineWidth=1;c.beginPath();c.arc(ox,oy,sz+3,0,PI2);c.stroke()}
 
                 c.fillStyle=active?'#fff':'#9999b8';c.font="600 9px 'JetBrains Mono',monospace";c.textAlign='center';c.textBaseline='middle';
-                c.fillText(names[i],ox,oy);
+                c.fillText(st.labels[i],ox,oy);
             }
-            lbl(c,OPTS[sel],cx,st.h+10,colors[sel]);
+            lbl(c,st.labels[sel],cx,st.h+10,base[sel%bn]);
             if(st.focused)fr(c,st.w,st.h,4);
         },
     };
@@ -3021,6 +3052,14 @@ export const UIFXRecipes5 = {
     FocusHalo, ErrorShake, SuccessBloom,
 };
 
+// U7 additions -- grouped controls (N native elements + one canvas, mounted via
+// mountUIFXGroup). PillTabs/Stepper/RadioOrbit/BubbleRating re-homed from their
+// vol.3 single-element fakes to real group types (see RECIPE_META); SegmentedSlide
+// is new. Reachable via RECIPES / RECIPE_META and their named exports regardless.
+export const UIFXRecipes6 = {
+    SegmentedSlide,
+};
+
 
 // ===========================================================
 //  DEFAULT EXPORT -- combined all-53 namespace
@@ -3066,6 +3105,7 @@ export default {
     SignalMeter,
     LiquidFill,
     PillTabs,
+    SegmentedSlide,
     Stepper,
     RadioOrbit,
     PasswordStrength,
@@ -3135,6 +3175,7 @@ export const RECIPES = Object.assign(Object.create(null), {
     signalMeter: SignalMeter,
     liquidFill: LiquidFill,
     pillTabs: PillTabs,
+    segmentedSlide: SegmentedSlide,
     stepper: Stepper,
     radioOrbit: RadioOrbit,
     passwordStrength: PasswordStrength,
@@ -3198,16 +3239,17 @@ export const RECIPE_META = [
     { id: 'indeterminateScan', name: 'Indeterminate Scan', type: 'checkbox', family: 'Checkboxes', themeable: true, motionSafe: false },
     { id: 'flameCounter', name: 'Flame Counter', type: 'slider', family: 'Counters', themeable: true, motionSafe: false },
     { id: 'glitchCounter', name: 'Glitch Counter', type: 'slider', family: 'Counters', themeable: true, motionSafe: false },
-    { id: 'bubbleRating', name: 'Bubble Rating', type: 'slider', family: 'Rating', themeable: true, motionSafe: false },
+    { id: 'bubbleRating', name: 'Bubble Rating', type: 'rating', family: 'Rating', themeable: true, motionSafe: false },
     { id: 'volumeKnob', name: 'Volume Knob', type: 'knob', family: 'Knobs', themeable: true, motionSafe: false },
     { id: 'compassKnob', name: 'Compass Knob', type: 'knob', family: 'Knobs', themeable: true, motionSafe: false },
     { id: 'ringProgress', name: 'Ring Progress', type: 'progress', family: 'Progress', themeable: true, motionSafe: false },
     { id: 'batteryGauge', name: 'Battery Gauge', type: 'progress', family: 'Progress', themeable: true, motionSafe: false },
     { id: 'signalMeter', name: 'Signal Meter', type: 'progress', family: 'Progress', themeable: true, motionSafe: false },
     { id: 'liquidFill', name: 'Liquid Fill', type: 'progress', family: 'Progress', themeable: true, motionSafe: false },
-    { id: 'pillTabs', name: 'Pill Tabs', type: 'button', family: 'Controls', themeable: true, motionSafe: false },
-    { id: 'stepper', name: 'Stepper', type: 'button', family: 'Controls', themeable: true, motionSafe: false },
-    { id: 'radioOrbit', name: 'Radio Orbit', type: 'slider', family: 'Controls', themeable: true, motionSafe: false },
+    { id: 'pillTabs', name: 'Pill Tabs', type: 'tabs', family: 'Controls', themeable: true, motionSafe: false },
+    { id: 'segmentedSlide', name: 'Segmented Slide', type: 'tabs', family: 'Controls', themeable: true, motionSafe: false },
+    { id: 'stepper', name: 'Stepper', type: 'stepper', family: 'Controls', themeable: true, motionSafe: false },
+    { id: 'radioOrbit', name: 'Radio Orbit', type: 'radio', family: 'Controls', themeable: true, motionSafe: false },
     { id: 'passwordStrength', name: 'Password Strength', type: 'decorate', family: 'Indicators', themeable: true, motionSafe: true },
     { id: 'waterLevel', name: 'Water Level', type: 'slider', family: 'Indicators', themeable: true, motionSafe: false },
     { id: 'heatMap', name: 'Heat Map', type: 'slider', family: 'Indicators', themeable: true, motionSafe: false },
@@ -3228,14 +3270,15 @@ export const RECIPE_META = [
 /** Names of every built-in recipe (the keys of RECIPES at load time). */
 export const RECIPE_NAMES = Object.freeze(Object.keys(RECIPES));
 
-// The valid recipe/mount types, taken from the controller's UIType so the
-// registry's fail-closed check and the controller's mount guard are one source
-// of truth (they cannot drift as U4 adds types). Built once at load (cold).
-// Plus the ONE non-UIType routing tag: 'decorate' (U4b) creates no native
-// element -- it is mounted AROUND a live element by decorateUIFX, not by
-// mountUIFX -- so it is not a UIType, but it is a valid RECIPE_META.type that
-// mountRecipe routes on (see below). It is the only member not from UIType.
-const VALID_META_TYPES = new Set([...Object.values(UIType), 'decorate']);
+// The valid recipe/mount types, taken from the controller's UIType + GroupType so
+// the registry's fail-closed check and the controller's mount guards are one
+// source of truth (they cannot drift as U4/U7 add types). Built once at load
+// (cold). Beyond the UITypes there are two non-UIType routing tags: 'decorate'
+// (U4b, mounted AROUND a live element by decorateUIFX) and the four GroupTypes
+// (U7: radio/tabs/stepper/rating, mounted as N native elements + one canvas by
+// mountUIFXGroup). mountRecipe routes each family to the right mount (see below).
+const _GROUP_TYPES = new Set(Object.values(GroupType));
+const VALID_META_TYPES = new Set([...Object.values(UIType), 'decorate', ..._GROUP_TYPES]);
 
 /**
  * Register a custom recipe, or override a built-in. Instantly usable via
@@ -3265,7 +3308,7 @@ export function registerRecipe(id, factory, meta) {
     // valid set is UIType (VALID_META_TYPES), so registry + controller never
     // disagree about what a type is.
     if (!VALID_META_TYPES.has(type)) {
-        throw new TypeError('registerRecipe: type must be one of "button", "toggle", "slider", "checkbox", "progress", "knob"');
+        throw new TypeError('registerRecipe: type must be a UIType ("button", "toggle", "slider", "checkbox", "progress", "knob"), "decorate", or a GroupType ("radio", "tabs", "stepper", "rating")');
     }
 
     RECIPES[id] = factory;
@@ -3367,10 +3410,18 @@ export function mountRecipe(container, id, options) {
         mountOptions = {};
         for (const k in options) if (k !== 'type') mountOptions[k] = options[k];
     }
+    // A grouped control (U7) is N native elements + one canvas, so it routes to
+    // mountUIFXGroup with `container` as the parent and the group type selecting
+    // the native structure (radios / tabs / spinbutton). It needs `items` in
+    // options (fail closed inside mountUIFXGroup). mountUIFX/decorateUIFX reject a
+    // group type via their own guards, so the three mount paths cannot cross.
+    if (_GROUP_TYPES.has(type)) {
+        return mountUIFXGroup(container, type, factory, mountOptions);
+    }
     // A decoration is mounted AROUND a live element (no native element created),
     // so it routes to decorateUIFX with `container` as the host element. Every
     // other type is a hijack mount. mountUIFX keeps rejecting 'decorate' via its
-    // own _KNOWN_TYPES guard, so the two paths cannot cross.
+    // own _KNOWN_TYPES guard, so the paths cannot cross.
     if (type === 'decorate') {
         return decorateUIFX(container, factory, mountOptions);
     }

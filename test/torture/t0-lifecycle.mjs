@@ -14,7 +14,8 @@
 
 import assert from 'node:assert/strict';
 import {
-    mountUIFX, decorateUIFX, UIType, makeContainer, headChildCount, raf,
+    mountUIFX, decorateUIFX, mountUIFXGroup, UIType, GROUP_TYPES, groupItems,
+    makeContainer, headChildCount, raf,
     RECIPES, RECIPE_META,
 } from './harness.mjs';
 
@@ -114,6 +115,27 @@ export async function runT0() {
             continue;
         }
 
+        // Group lifecycle tier (U7): a grouped control mounts N native elements +
+        // one canvas via mountUIFXGroup. Exercise selection (setIndex) + focus/hover
+        // draw paths, then assert a clean teardown (wrapper removed, RAF drained).
+        if (GROUP_TYPES.has(m.type)) {
+            const inst = mountUIFXGroup(container, m.type, factory, { items: groupItems(4) });
+            assert.equal(container.children.length, 1, m.id + ' group wrapper mounted');
+            assert.equal(inst.wrapper.parentNode, container, m.id + ' group wrapper in container');
+            assert.equal(inst.els.length >= 1, true, m.id + ' group has native elements');
+            pump(4);
+            inst.setIndex(1); pump(2);
+            inst.setIndex(3); inst.state.focused = true; inst.state.hover = true; pump(2);
+            inst.state.focused = false; inst.state.hover = false; pump(2);
+            inst.destroy();
+            inst.destroy(); // idempotent
+            if (hadDestroy) assert.equal(destroyCount, 1, m.id + ' recipe.destroy called exactly once');
+            assert.equal(container.children.length, 0, m.id + ' group wrapper removed');
+            assert.equal(raf.pending(), 0, m.id + ' raf pending returns to 0');
+            mounted++;
+            continue;
+        }
+
         const inst = mountUIFX(container, m.type, factory);
         assert.equal(container.children.length, 1, m.id + ' wrapper mounted');
         assert.equal(inst.wrapper.parentNode, container, m.id + ' wrapper in container');
@@ -143,7 +165,7 @@ export async function runT0() {
     const metaStyleDelta = headChildCount() - metaHeadBefore;
     assert.equal(metaStyleDelta, 0, 'meta batch nets ZERO into document.head');
     assert.equal(mounted, RECIPE_META.length, 'every RECIPE_META row mounted');
-    assert.equal(mounted, 56, 'all 56 recipes exercised');
+    assert.equal(mounted, 57, 'all 57 recipes exercised');
 
     return { styleDelta, mounted };
 }

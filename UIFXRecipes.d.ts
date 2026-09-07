@@ -1,4 +1,7 @@
-import type { UIFXRecipe, UIFXInstance, MountOptions } from './UIFXController';
+import type {
+    UIFXRecipe, UIFXInstance, MountOptions,
+    UIFXGroupRecipe, GroupOptions, UIFXGroupInstance, DecorateInstance,
+} from './UIFXController';
 
 // ===========================================================
 //  RECIPE OPTIONS + FACTORIES (all 56)
@@ -81,7 +84,8 @@ export declare function FlameCounter(options?: RecipeOptions): UIFXRecipe;
 export declare function GlitchCounter(options?: RecipeOptions): UIFXRecipe;
 
 // -- Vol.2: Rating --
-export declare function BubbleRating(options?: RecipeOptions): UIFXRecipe;
+/** U7 GROUP (rating): mount via mountUIFXGroup(GroupType.RATING, ...). */
+export declare function BubbleRating(options?: RecipeOptions): UIFXGroupRecipe;
 
 // -- Vol.3: Knobs --
 export declare function VolumeKnob(options?: RecipeOptions): UIFXRecipe;
@@ -95,9 +99,13 @@ export declare function SignalMeter(options?: RecipeOptions): UIFXRecipe;
 export declare function LiquidFill(options?: RecipeOptions): UIFXRecipe;
 
 // -- Vol.3: Controls --
-export declare function PillTabs(options?: RecipeOptions): UIFXRecipe;
-export declare function Stepper(options?: RecipeOptions): UIFXRecipe;
-export declare function RadioOrbit(options?: RecipeOptions): UIFXRecipe;
+// -- U7 GROUP recipes (mounted via mountUIFXGroup): N native elements + one
+//    canvas. PillTabs/SegmentedSlide -> GroupType.TABS, Stepper -> STEPPER,
+//    RadioOrbit -> RADIO. See decisions/0007. --
+export declare function PillTabs(options?: RecipeOptions): UIFXGroupRecipe;
+export declare function SegmentedSlide(options?: RecipeOptions): UIFXGroupRecipe;
+export declare function Stepper(options?: RecipeOptions): UIFXGroupRecipe;
+export declare function RadioOrbit(options?: RecipeOptions): UIFXGroupRecipe;
 
 // -- Vol.3: Indicators --
 export declare function PasswordStrength(options?: RecipeOptions): UIFXRecipe;
@@ -203,14 +211,24 @@ export declare const UIFXRecipes5: {
     SuccessBloom: typeof SuccessBloom;
 };
 
+/** U7 additions -- grouped controls (mounted via mountUIFXGroup). PillTabs/Stepper/
+ *  RadioOrbit/BubbleRating re-home from vol.3 single-element fakes; SegmentedSlide
+ *  is new. See decisions/0007. */
+export declare const UIFXRecipes6: {
+    SegmentedSlide: typeof SegmentedSlide;
+};
+
 // ===========================================================
 //  RECIPE REGISTRY
 // ===========================================================
 
-// 'decorate' is not a UIType (it creates no native element); it is the registry
-// routing tag for a recipe mounted AROUND a live element via decorateUIFX. See
-// decisions/0004.
-export type RecipeType = 'toggle' | 'button' | 'slider' | 'checkbox' | 'progress' | 'knob' | 'decorate';
+// Beyond the UITypes there are two non-UIType routing tags: 'decorate' (U4b,
+// mounted AROUND a live element via decorateUIFX -- 0004) and the four GroupTypes
+// (U7, mounted as N native elements + one canvas via mountUIFXGroup -- 0007).
+export type RecipeType =
+    | 'toggle' | 'button' | 'slider' | 'checkbox' | 'progress' | 'knob'
+    | 'decorate'
+    | 'radio' | 'tabs' | 'stepper' | 'rating';
 
 export type RecipeFactory = (options?: Record<string, unknown>) => UIFXRecipe;
 
@@ -243,14 +261,15 @@ export declare function registerRecipe(
  * Resolve a recipe id to its factory + declared type and mount it. A hijack
  * recipe mounts via mountUIFX (the native element is created inside `container`);
  * a recipe whose meta.type is 'decorate' mounts via decorateUIFX, treating
- * `container` as the LIVE element to decorate (a canvas is placed AROUND it).
- * Fail closed: unknown id or a conflicting options.type throws.
+ * `container` as the LIVE element to decorate; a GROUP type (radio/tabs/stepper/
+ * rating) mounts via mountUIFXGroup with `container` as the parent and `items` in
+ * options. Fail closed: unknown id or a conflicting options.type throws.
  */
 export declare function mountRecipe(
     container: HTMLElement,
     id: string,
-    options?: MountOptions & { type?: RecipeType },
-): UIFXInstance;
+    options?: (MountOptions | GroupOptions) & { type?: RecipeType },
+): UIFXInstance | UIFXGroupInstance | DecorateInstance;
 
 // ===========================================================
 //  DEFAULT EXPORT -- combined all-56 namespace
@@ -296,6 +315,7 @@ declare const UIFXAllRecipes: {
     SignalMeter: typeof SignalMeter;
     LiquidFill: typeof LiquidFill;
     PillTabs: typeof PillTabs;
+    SegmentedSlide: typeof SegmentedSlide;
     Stepper: typeof Stepper;
     RadioOrbit: typeof RadioOrbit;
     PasswordStrength: typeof PasswordStrength;

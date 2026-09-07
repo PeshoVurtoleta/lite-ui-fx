@@ -35,8 +35,14 @@ import { createRoot, effect } from '@zakkster/lite-signal';
 installDom();
 raf.install();
 
-const { mountUIFX, decorateUIFX, UIType } = await import('../../UIFXController.js');
+const { mountUIFX, decorateUIFX, mountUIFXGroup, UIType, GroupType } = await import('../../UIFXController.js');
 const { RECIPES, RECIPE_META } = await import('../../UIFXRecipes.js');
+
+// U7 group types, derived once so the tiers dispatch a group meta.type to
+// mountUIFXGroup (the way 'decorate' routes to decorateUIFX).
+const GROUP_TYPES = new Set(Object.values(GroupType));
+// Default item labels for a group of n (a strip of "0".."n-1"). Cold, test-only.
+function groupItems(n) { const a = new Array(n); for (let i = 0; i < n; i++) a[i] = String(i); return a; }
 
 // ---------------------------------------------------------------------------
 //  Seeded xorshift PRNG (TORTURE_SEED override; print seed on failure)
@@ -81,9 +87,18 @@ async function settle(ms = 60) { await new Promise((r) => setTimeout(r, ms)); }
 //  in the loop body so the gate measures the recipe, not the scaffold.
 // ---------------------------------------------------------------------------
 
-function makeFrame(recipeFactory, driver) {
+function makeFrame(recipeFactory, driver, opts = {}) {
     const ctx = new Ctx2DStub();
     const recipe = recipeFactory();
+    // Group geometry (U7): a strip of `gn` items across w=160, preallocated once
+    // (cold). A group recipe reads index/count/itemX/itemW/labels; a scalar recipe
+    // ignores them. So the synthetic state is the real per-frame SUPERSET.
+    const gn = opts.groupCount || 5;
+    const gItemX = new Float32Array(gn), gItemY = new Float32Array(gn);
+    const gItemW = new Float32Array(gn), gItemH = new Float32Array(gn);
+    const gLabels = new Array(gn);
+    const giw = 160 / gn;
+    for (let k = 0; k < gn; k++) { gItemX[k] = k * giw; gItemW[k] = giw; gItemH[k] = 48; gLabels[k] = String(k); }
     const state = {
         hover: false, active: false, focused: false, toggled: false, indeterminate: false,
         val: 0.5, w: 160, h: 48, padding: 40, dpr: 1,
@@ -92,6 +107,9 @@ function makeFrame(recipeFactory, driver) {
         // Host-clock fields (U5): reduced-motion flag + frame budget. Present so a
         // calm-path recipe reads a real boolean/number, never undefined.
         reducedMotion: false, budget: 1,
+        // Group fields (U7): selection + count + geometry lanes + labels.
+        index: 0, count: gn, hoverIndex: -1,
+        labels: gLabels, itemX: gItemX, itemY: gItemY, itemW: gItemW, itemH: gItemH,
     };
     const pointer = { x: 4, y: 4, vx: 0, vy: 0 };
     const cw = state.w + 80, ch = state.h + 80, dpr = 1, padding = 40;
@@ -113,8 +131,8 @@ function makeFrame(recipeFactory, driver) {
     };
 }
 
-async function gcGate(recipeFactory, { hot = 200000, driver = null, warm = 30000 } = {}) {
-    const frame = makeFrame(recipeFactory, driver);
+async function gcGate(recipeFactory, { hot = 200000, driver = null, warm = 30000, groupCount } = {}) {
+    const frame = makeFrame(recipeFactory, driver, { groupCount });
     // Warm up first: an aggressive churn driver flips state far faster than any
     // real interaction, which makes V8 deopt/reopt the tick and allocate during
     // that settling. Run (and discard) warm frames so the measured window is
@@ -146,8 +164,8 @@ export {
     installDom, setDpr, emitDpr, emitReducedMotion, makeContainer, headChildCount,
     Ctx2DStub, EventStub, PointerEventStub, FocusEventStub, FakeTicker, raf,
     // controller
-    mountUIFX, decorateUIFX, UIType,
-    // recipes registry (drives the meta-driven t0/t1 sweep over all 56)
+    mountUIFX, decorateUIFX, mountUIFXGroup, UIType, GroupType, GROUP_TYPES, groupItems,
+    // recipes registry (drives the meta-driven t0/t1 sweep over all 57)
     RECIPES, RECIPE_META,
     // signal
     createRoot, effect,

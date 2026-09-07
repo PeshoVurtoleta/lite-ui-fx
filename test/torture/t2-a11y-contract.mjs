@@ -9,7 +9,7 @@
 // so { checked } / { value } are asserted strictly BEFORE frame 1.
 
 import assert from 'node:assert/strict';
-import { mountUIFX, decorateUIFX, UIType, makeContainer, EventStub, raf, Ctx2DStub, RECIPES } from './harness.mjs';
+import { mountUIFX, decorateUIFX, mountUIFXGroup, UIType, GroupType, makeContainer, EventStub, raf, Ctx2DStub, RECIPES } from './harness.mjs';
 
 function keydown(el, code) {
     el.dispatchEvent(Object.assign(new EventStub('keydown'), { code }));
@@ -232,6 +232,52 @@ export async function runT2() {
         assert.equal(inst.state.text, '', 'A16: input on a valueless host leaves state.text empty');
         inst.destroy();
         container.removeChild(host);
+    }
+
+    // ---- U7 A17: GROUP a11y contract -- N native elements, the tree per pattern,
+    // and the APG keyboard walk. The tree IS the contract (assert attributes). ----
+    {
+        // RADIO: fieldset radiogroup of N radios; a native change selects once.
+        const rsel = [];
+        const rg = mountUIFXGroup(container, GroupType.RADIO,
+            () => ({ tick() {}, onSelect(i) { rsel.push(i); } }), { items: ['a', 'b', 'c', 'd'], index: 0, label: 'Pick one' });
+        assert.equal(rg.wrapper.children[0].tagName, 'FIELDSET', 'A17: radio root is a fieldset');
+        assert.equal(rg.wrapper.children[0].getAttribute('role'), 'radiogroup', 'A17: radiogroup role');
+        assert.equal(rg.els.length, 4, 'A17: four native radios');
+        assert.equal(rg.els[0].type, 'radio', 'A17: radio inputs');
+        assert.equal(rg.els[0].checked, true, 'A17: initial index checked');
+        rg.els[2].checked = true; rg.els[2].dispatchEvent(new EventStub('change'));
+        assert.deepEqual(rsel, [2], 'A17: radio change fires onSelect once with the index');
+        rg.destroy();
+
+        // TABS: tablist/tab pattern; APG Left/Right/Home/End roving, one onSelect/move.
+        const tsel = [];
+        const tg = mountUIFXGroup(container, GroupType.TABS,
+            () => ({ tick() {}, onSelect(i) { tsel.push(i); } }), { items: ['x', 'y', 'z'] });
+        const tablist = tg.wrapper.children[0];
+        assert.equal(tablist.getAttribute('role'), 'tablist', 'A17: tablist role');
+        assert.equal(tg.els[0].getAttribute('role'), 'tab', 'A17: tab role');
+        assert.equal(tg.els[0].tabIndex, 0, 'A17: selected tab tabbable');
+        assert.equal(tg.els[1].tabIndex, -1, 'A17: unselected tab not tabbable (roving)');
+        tablist.dispatchEvent(new EventStub('keydown', { key: 'ArrowRight' }));  // -> 1
+        tablist.dispatchEvent(new EventStub('keydown', { key: 'End' }));         // -> 2
+        tablist.dispatchEvent(new EventStub('keydown', { key: 'Home' }));        // -> 0
+        tablist.dispatchEvent(new EventStub('keydown', { key: 'ArrowLeft' }));   // wraps -> 2
+        assert.deepEqual(tsel, [1, 2, 0, 2], 'A17: APG arrows/Home/End fire onSelect with the right index');
+        assert.equal(tg.els[2].getAttribute('aria-selected'), 'true', 'A17: aria-selected follows selection');
+        assert.equal(tg.els[2].tabIndex, 0, 'A17: roving tabindex follows selection');
+        tg.destroy();
+
+        // STEPPER: one native <input type=number> spinbutton; input selects once.
+        const ssel = [];
+        const sg = mountUIFXGroup(container, GroupType.STEPPER,
+            () => ({ tick() {}, onSelect(i) { ssel.push(i); } }), { items: ['0', '1', '2', '3'], index: 1 });
+        assert.equal(sg.els.length, 1, 'A17: stepper is ONE element');
+        assert.equal(sg.els[0].type, 'number', 'A17: spinbutton is <input type=number>');
+        assert.equal(sg.els[0].max, '3', 'A17: max = count-1');
+        sg.els[0].value = '2'; sg.els[0].dispatchEvent(new EventStub('input'));
+        assert.deepEqual(ssel, [2], 'A17: spinbutton input fires onSelect once');
+        sg.destroy();
     }
 
     assert.equal(raf.pending(), 0, 't2 raf pending returns to 0');

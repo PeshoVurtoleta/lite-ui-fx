@@ -5,6 +5,69 @@ All notable changes to `@zakkster/lite-ui-fx` are documented here.
 The format follows Keep a Changelog; this project adheres to Semantic
 Versioning.
 
+## [1.9.0] -- 2026-09-07
+
+Grouped controls (roadmap U7): a third mount mode for a control that is N native
+elements sharing one canvas and one recipe. Additive -- `mountUIFX` and
+`decorateUIFX` are byte-identical (the `UIFXController.js` diff is 524 insertions,
+0 deletions), the single-element API and the eight-hook recipe contract are
+unchanged, so this is a minor. See decisions/0007.
+
+### Added
+
+- `mountUIFXGroup(container, groupType, recipeFactory, options)` -- the group
+  mount, returning `{ els, canvas, wrapper, state, index, setIndex(i), tick, destroy }`.
+  `setIndex(i)` selects programmatically, updating the native element(s) and
+  `state.index` and firing `onSelect` once, without stealing focus.
+- `GroupType` { RADIO, TABS, STEPPER, RATING }. RADIO/RATING build a
+  `<fieldset role=radiogroup>` of native radios (native roving selection); TABS a
+  `<div role=tablist>` of `<button role=tab>` with a hand-written APG roving
+  tabindex (Left/Right/Up/Down + Home/End); STEPPER one `<input type=number>`
+  spinbutton.
+- `onSelect(index, state)` -- the ninth, group-only recipe hook, fired exactly
+  once per selection change (rejected by `mountUIFX`/`decorateUIFX`). Group state
+  is a superset of the scalar state plus `index`, `count`, `hoverIndex`, `labels`,
+  and the `itemX`/`itemY`/`itemW`/`itemH` Float32Array geometry lanes (read by
+  index, zero per-frame allocation).
+- `SegmentedSlide` (a TABS recipe) -- 57 built-in recipes total. New `UIFXRecipes6`
+  barrel; the four group types added to `RECIPE_META`, `VALID_META_TYPES`, and
+  `mountRecipe` routing (a group `META.type` routes to `mountUIFXGroup`, and needs
+  `items`).
+- `test/group.test.mjs` (31 cases): native structure + ARIA per pattern, the APG
+  keyboard walk, onSelect-exactly-once, `setIndex`, the scalar-state superset,
+  the three clock modes, and fail-closed validation. Torture gains group coverage
+  in t0/t1/t2/t3 (with a per-item allocation control that must fail the gate) and
+  t5 (20 groups of 5 on one shared ticker). `npm test` is 238 cases across 27
+  suites; the torture gate holds at `alloc=0.8759765625 B/op`, 0 major GCs.
+- TypeScript declarations for the group surface (`GroupType`, `mountUIFXGroup`,
+  `UIFXGroupState`, `UIFXGroupRecipe`, `GroupOptions`, `UIFXGroupInstance`).
+
+### Changed
+
+- `PillTabs`, `Stepper`, `RadioOrbit`, and `BubbleRating` re-home from their vol.3
+  single-element fakes to real group types (`RECIPE_META.type` slider/button ->
+  radio/tabs/stepper/rating); their bodies read group state (`state.index`/`count`
+  and the geometry lanes) instead of a faked `state.val`. `mountRecipe(container,
+  id, { items })` routes them by `META.type`. RadioOrbit and BubbleRating size
+  their per-item lane from `state.count` -- a one-time grow, warm-up-absorbed.
+- `README.md` and `llms.txt` document three mount modes, 57 recipes, and the group
+  API + state fields. Measured sizes updated: controller ~7.1 KB min+gzip (its
+  three deps external), full catalog ~25 KB. `demo/index.html` renders the group
+  recipes and cycles their selection (`#profile` reports `violationCount 0`).
+
+### Fixed
+
+- The four re-homed controls now carry correct native selection and keyboard: a
+  radio group and a tablist are N elements, so arrow-key roving is the browser's
+  own (radio/rating/stepper) or an APG-correct hand-written roving (tabs). The
+  single-element fakes had the wrong arrow-key behaviour.
+
+### Removed
+
+- none. The single-element fake mount of the four re-homed recipes is superseded
+  by their group mount via `mountRecipe`/`mountUIFXGroup`; no public export or
+  option was removed.
+
 ## [1.8.0] -- 2026-09-07
 
 Documentation and demo (roadmap U6). No API, recipe, or behaviour change: the

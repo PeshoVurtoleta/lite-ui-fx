@@ -25,15 +25,27 @@ function colorsOf(id, opts) {
     const S = new Set();
     if (recipe.init) recipe.init(ctx, 160, 48, 40);
     ctx.record(true);
+    // Group geometry lanes (U7): a 4-item strip across w=160. A group recipe reads
+    // st.index/count/itemX/itemW/labels; a scalar recipe ignores them. Built once
+    // (test-cold) so the synthetic state is the real per-frame SUPERSET.
+    const GN = 4;
+    const gItemX = new Float32Array([0, 40, 80, 120]);
+    const gItemW = new Float32Array([40, 40, 40, 40]);
+    const gItemY = new Float32Array(GN);
+    const gItemH = new Float32Array([48, 48, 48, 48]);
+    const gLabels = ['A', 'B', 'C', 'D'];
     for (let i = 0; i < 8; i++) {
         // valid toggles (false<->true edges drive ErrorShake/SuccessBloom) and
         // text varies (PasswordStrength/TypewriterField); non-decorate recipes
         // ignore both fields, so this just gives the decorate recipes a live host.
-        const st = { hover: !!(i & 1), active: !!(i & 2), focused: !!(i & 4), toggled: !!(i & 1), indeterminate: !!(i & 2), valid: !(i & 2), text: (i & 1) ? 'Ab7$k9' : '', val: (i % 5) / 4, w: 160, h: 48, padding: 40, dpr: 1 };
+        // index cycles the group selection (drives group recipes' recolour).
+        const st = { hover: !!(i & 1), active: !!(i & 2), focused: !!(i & 4), toggled: !!(i & 1), indeterminate: !!(i & 2), valid: !(i & 2), text: (i & 1) ? 'Ab7$k9' : '', val: (i % 5) / 4, w: 160, h: 48, padding: 40, dpr: 1,
+            index: i % GN, count: GN, hoverIndex: (i & 1) ? 1 : -1, labels: gLabels, itemX: gItemX, itemY: gItemY, itemW: gItemW, itemH: gItemH };
         const ptr = { x: 80, y: 24, vx: 6, vy: 0 };
         if (recipe.onDrag) recipe.onDrag(st.val, ptr.vx, st);
         if (recipe.onClick) recipe.onClick(ptr.x, ptr.y, st);
         if (recipe.onToggle) recipe.onToggle(!!(i & 1), st);
+        if (recipe.onSelect) recipe.onSelect(st.index, st);  // U7 group selection edge
         ctx.clearLog();
         recipe.tick(ctx, 0.016, i * 16, st, ptr);
         for (const e of ctx._log) {
@@ -51,7 +63,7 @@ const has = (set, needle) => {
 const THEME = { theme: { light: '#ff00aa', mid: '#00ffaa', dark: '#0a0a12' } };
 
 describe('U3b theming -- RECIPE_META flags', () => {
-    it('themeable is true for all 56 recipes', () => {
+    it('themeable is true for all 57 recipes', () => {
         for (const m of RECIPE_META) assert.equal(m.themeable, true, m.id + ' should be themeable');
     });
     it('motionSafe is true for EXACTLY the U5 calm-path recipes, false otherwise', () => {

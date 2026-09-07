@@ -1,6 +1,6 @@
 # @zakkster/lite-ui-fx
 
-> Canvas microinteractions on real native controls. A DPR-aware canvas is hijacked over a hidden native element -- or decorated around a live one -- and painted by a pluggable, zero-GC **recipe**. The native element owns focus, keyboard, and pointer events; the canvas owns the visuals. 56 built-in recipes behind a tree-shakeable registry, one option convention for theming, one clock you can hand it, and reduced-motion built in.
+> Canvas microinteractions on real native controls. A DPR-aware canvas is hijacked over a hidden native element -- decorated around a live one -- or shared across a group of them -- and painted by a pluggable, zero-GC **recipe**. The native element owns focus, keyboard, and pointer events; the canvas owns the visuals. 57 built-in recipes behind a tree-shakeable registry, one option convention for theming, one clock you can hand it, and reduced-motion built in.
 
 [![npm version](https://img.shields.io/npm/v/@zakkster/lite-ui-fx.svg?style=for-the-badge&color=latest)](https://www.npmjs.com/package/@zakkster/lite-ui-fx)
 ![Zero-GC](https://img.shields.io/badge/Zero--GC-Recipes-00C853?style=for-the-badge&logo=leaf&logoColor=white)
@@ -45,10 +45,11 @@ Three runtime dependencies, all zero-GC (`@zakkster/lite-ticker`, `lite-lerp`, `
 
 - [Why this exists](#why-this-exists)
 - [What you get](#what-you-get)
-- [Two mount modes and the recipe contract](#two-mount-modes-and-the-recipe-contract)
+- [Three mount modes and the recipe contract](#three-mount-modes-and-the-recipe-contract)
 - [API reference](#api-reference)
   - [mountUIFX](#mountuifxcontainer-type-recipefactory-options)
   - [decorateUIFX](#decorateuifxel-recipefactory-options)
+  - [mountUIFXGroup](#mountuifxgroupcontainer-grouptype-recipefactory-options)
   - [The recipe registry](#the-recipe-registry)
   - [Constants: UITypes, state, META](#constants-uitypes-state-meta)
 - [Host clock and reduced motion](#host-clock-and-reduced-motion)
@@ -77,18 +78,19 @@ The alternative is a hand-rolled canvas threshold loop (no a11y, allocates freel
 
 - **`mountUIFX(container, type, recipeFactory, options?)`** -- the hijack mount. Creates a real native element (invisible, accessible) under a DPR-scaled canvas and drives the recipe. Six element types: `TOGGLE`, `BUTTON`, `SLIDER`, `CHECKBOX`, `PROGRESS`, `KNOB`.
 - **`decorateUIFX(el, recipeFactory, options?)`** -- the decorate mount. Places a canvas *around* an existing visible element (a live `<input>`), reading `state.text`/`state.valid` from the host's own events. The host is byte-identical before and after; `destroy()` removes only the overlay.
-- **56 built-in recipes** on the `./recipes` subpath, versioned, typed, and tree-shakeable. With `sideEffects: false`, importing one recipe drops the other 55. Families: Toggles (7), Buttons (9), Sliders (7), Knobs (2), Progress (4), Checkboxes (4), Loaders (2), Counters (2), Rating (1), Controls (3), Indicators (3), Mood (3), Feedback (3), Fun (3), Form decorations (3).
+- **`mountUIFXGroup(container, groupType, recipeFactory, options)`** -- the group mount. N native elements + one canvas + one recipe: `RADIO`/`RATING` (a fieldset radiogroup), `TABS` (an APG tablist with roving tabindex), `STEPPER` (a spinbutton). The recipe reads `state.index`/`state.count`; selection and keyboard are the native elements' own.
+- **57 built-in recipes** on the `./recipes` subpath, versioned, typed, and tree-shakeable. With `sideEffects: false`, importing one recipe drops the other 56. Families: Toggles (7), Buttons (9), Sliders (7), Knobs (2), Progress (4), Checkboxes (4), Loaders (2), Counters (2), Rating (1), Controls (4), Indicators (3), Mood (3), Feedback (3), Fun (3), Form decorations (3).
 - **A registry for data-driven UIs** -- `RECIPES` (id -> factory, null-prototype), `RECIPE_META` (`{ id, name, type, family, themeable, motionSafe }`), `RECIPE_NAMES`, `registerRecipe(id, factory, meta)`, and `mountRecipe(container, id, options?)` which resolves the id fail-closed (did-you-mean on a typo) and mounts it as its declared type.
-- **One option convention for theming** -- `{ colors, theme: { light, mid, dark }, text, font }` honoured by all 56 recipes, resolved once in `init` so a themed mount stays zero-GC and a bare mount is byte-identical to pre-theming.
+- **One option convention for theming** -- `{ colors, theme: { light, mid, dark }, text, font }` honoured by all 57 recipes, resolved once in `init` so a themed mount stays zero-GC and a bare mount is byte-identical to pre-theming.
 - **Host integration** -- ride a caller-supplied `lite-ticker` (`{ ticker }`), drive frames by hand (`{ driven: true }` + `instance.tick(dtMs)`), or take the shared ref-counted ticker by default. Plus `state.reducedMotion` (matchMedia-watched) and `state.budget` (0..1 frame budget).
 - **Full TypeScript declarations** for both entry points, and a written recipe guide ([`UIFX-RECIPE-GUIDE.md`](UIFX-RECIPE-GUIDE.md)) shipped in the package.
 
 ---
 
-## Two mount modes and the recipe contract
+## Three mount modes and the recipe contract
 
 <details>
-<summary>How hijack and decorate differ, and the eight-hook recipe interface both share.</summary>
+<summary>How hijack, decorate, and group differ, and the recipe interface they share.</summary>
 
 ### Hijack (`mountUIFX`)
 
@@ -105,9 +107,13 @@ The native element is the source of truth. Every visual reads `state`; `state` r
 
 No native element is created and nothing is reparented. The canvas is a sibling positioned from the host's offset box and removed on `destroy()`, so the host is byte-identical before and after. `state` is wired from the host's own events; for a form control, `state.text` and `state.valid` mirror `el.value` and `el.validity` (read at event time, never per frame). This is the honest home for a decoration over a real input -- a visible text field cannot be `opacity:0`.
 
-### The recipe contract (both modes)
+### Group (`mountUIFXGroup`)
 
-A recipe is a factory returning up to eight hooks. Only `tick` is required; it is the one HOT function.
+A grouped control is *N* native elements sharing one canvas and one recipe -- radios in a `<fieldset>`, tabs in a `<div role="tablist">`, or a `<input type="number">` spinbutton. Selection and keyboard belong to the native elements (radio/rating roving is the browser's own; the tablist gets a hand-written APG roving tabindex with arrows and Home/End); the recipe paints from `state.index`, `state.count`, and the per-item geometry lanes (`state.itemX/itemY/itemW/itemH`, one entry per item). It adds one hook -- `onSelect(index, state)`, fired exactly once per selection change -- and `setIndex(i)` for programmatic selection.
+
+### The recipe contract (all three modes)
+
+A recipe is a factory returning up to eight hooks (nine for a group -- the extra is `onSelect`). Only `tick` is required; it is the one HOT function.
 
 ```js
 export function MyRecipe() {
@@ -177,6 +183,28 @@ deco.destroy();   // removes ONLY the overlay; the input is untouched
 
 Built-in decorate recipes: `FocusHalo`, `ErrorShake`, `SuccessBloom`, `PasswordStrength`, `TypewriterField` (`RECIPE_META.type === 'decorate'`, so `mountRecipe(el, id)` routes them here automatically).
 
+### `mountUIFXGroup(container, groupType, recipeFactory, options)`
+
+The third mount mode: a **grouped control** -- N native elements + one canvas + one recipe. `GroupType.RADIO`/`RATING` build a `<fieldset role="radiogroup">` of N radios (native roving); `GroupType.TABS` builds a `<div role="tablist">` of N `<button role="tab">` with hand-written APG roving tabindex (arrows, Home/End); `GroupType.STEPPER` is one `<input type="number">` spinbutton. The native elements own selection and keyboard; the recipe reads `state.index`, `state.count`, and the per-item geometry lanes (`state.itemX/itemY/itemW/itemH`).
+
+`options`: `items` (`string[]`, **required**, >=2 labels -- its length is the item/step count), `index` (integer initial selection, default 0), plus `label`, `width`, `height`, `padding`, `disabled`, `seed`, `colors`, `theme`, `text`, `font`, `ticker`, `driven`. The hijack-only keys (`value`/`checked`/`knobMode`/`announce`) throw -- a group selects by `index`, not a float `value`.
+
+Returns `{ els, canvas, wrapper, state, index, setIndex(i), tick(dtMs), destroy() }`. `setIndex(i)` selects item `i` programmatically -- it updates the native element(s) and `state.index` and fires `onSelect` exactly once, without stealing focus. A group recipe may add `onSelect(index, state)` -- the ninth, group-only hook (`mountUIFX`/`decorateUIFX` reject it).
+
+```js
+import { mountUIFXGroup, GroupType } from '@zakkster/lite-ui-fx';
+import { PillTabs } from '@zakkster/lite-ui-fx/recipes';
+
+const tabs = mountUIFXGroup(document.getElementById('view-tabs'), GroupType.TABS, PillTabs, {
+  items: ['Overview', 'Activity', 'Settings'],
+  index: 0,
+});
+tabs.setIndex(2);   // selects "Settings"; fires onSelect once, no focus steal
+tabs.destroy();
+```
+
+Built-in group recipes: `PillTabs`, `SegmentedSlide` (`TABS`), `RadioOrbit` (`RADIO`), `Stepper` (`STEPPER`), `BubbleRating` (`RATING`). The first four re-home from their vol.3 single-element fakes to real groups (so their arrow-key selection is finally correct); `mountRecipe(container, id, { items })` routes them here by `META.type`.
+
 ### The recipe registry
 
 ```js
@@ -187,7 +215,7 @@ const toggles = RECIPE_META.filter((m) => m.family === 'Toggles');
 mountRecipe(document.getElementById('picker'), 'sparkSlider', { value: 0.5 });
 ```
 
-`mountRecipe` resolves the id fail-closed (an unknown id throws with a did-you-mean over `RECIPE_NAMES`), asserts `META.type`, and routes to `mountUIFX` or `decorateUIFX` accordingly. `registerRecipe(id, factory, meta)` adds or overrides a recipe and merges its META in place, so a live picker built off `RECIPE_META` updates itself.
+`mountRecipe` resolves the id fail-closed (an unknown id throws with a did-you-mean over `RECIPE_NAMES`), asserts `META.type`, and routes to `mountUIFX`, `decorateUIFX`, or `mountUIFXGroup` (a group type needs `items`) accordingly. `registerRecipe(id, factory, meta)` adds or overrides a recipe and merges its META in place, so a live picker built off `RECIPE_META` updates itself.
 
 ### Constants: UITypes, state, META
 
@@ -200,6 +228,7 @@ mountRecipe(document.getElementById('picker'), 'sparkSlider', { value: 0.5 });
 | `PROGRESS` | `<progress>` (non-interactive) | (driven by `setValue`) | `state.val` (0..1) |
 | `KNOB` | `<input type="range">` | `onDrag(val, velocity)` | `state.val` (0..1) |
 | *(decorate)* | none -- canvas around a live host | host events -> state | `state.focused`, `state.text`, `state.valid` |
+| *(group)* `GroupType.{RADIO,TABS,STEPPER,RATING}` | N native elements (fieldset/tablist/spinbutton) | `onSelect(index, state)` | `state.index`, `state.count` |
 
 The `state` object passed to `tick(ctx, dt, now, state)` every frame:
 
@@ -213,8 +242,10 @@ The `state` object passed to `tick(ctx, dt, now, state)` every frame:
 | `reducedMotion` | `boolean` | user prefers reduced motion (matchMedia, watched) |
 | `budget` | `number` | 0..1 frame budget, 1 at ~60fps, lower as frames lengthen |
 | `text` / `valid` | `string` / `boolean` | decorate mode only: host value and validity |
+| `index` / `count` / `hoverIndex` | `number` | group mode only: selection, item count, hovered item (-1 none) |
+| `labels` / `itemX` / `itemY` / `itemW` / `itemH` | `string[]` / `Float32Array` | group mode only: item labels + per-item geometry lanes (read by index) |
 
-`RECIPE_META` rows: `{ id, name, type, family, themeable, motionSafe }`. `themeable` is true for all 56; `motionSafe` is true for exactly the recipes that ship a calm reduced-motion path (6 today: SwarmToggle plus the five decorate recipes) and honestly false for the rest.
+`RECIPE_META` rows: `{ id, name, type, family, themeable, motionSafe }`. `themeable` is true for all 57; `motionSafe` is true for exactly the recipes that ship a calm reduced-motion path (6 today: SwarmToggle plus the five decorate recipes) and honestly false for the rest.
 
 ---
 
@@ -249,8 +280,8 @@ Passing both `ticker` and `driven`, a non-boolean `driven`, or a `ticker` withou
 One clock, a shared theme, several components -- the shape a game or a themed dashboard actually uses:
 
 ```js
-import { mountUIFX, decorateUIFX, UIType } from '@zakkster/lite-ui-fx';
-import { SwarmToggle, SparkSlider, PasswordStrength } from '@zakkster/lite-ui-fx/recipes';
+import { mountUIFX, decorateUIFX, mountUIFXGroup, UIType, GroupType } from '@zakkster/lite-ui-fx';
+import { SwarmToggle, SparkSlider, PasswordStrength, PillTabs } from '@zakkster/lite-ui-fx/recipes';
 import { Ticker } from '@zakkster/lite-ticker';
 
 // 1. One clock the host owns and controls (pause it, scale it, share it).
@@ -264,11 +295,14 @@ const theme = { light: '#a78bfa', mid: '#7c3aed', dark: '#4c1d95' };
 const mute   = mountUIFX(document.getElementById('mute'),  UIType.TOGGLE, SwarmToggle, { ticker: clock, theme });
 const volume = mountUIFX(document.getElementById('vol'),   UIType.SLIDER, SparkSlider, { ticker: clock, theme, value: 0.6 });
 const pw     = decorateUIFX(document.querySelector('#password'), PasswordStrength, { ticker: clock, theme });
+// a grouped control on the SAME clock + theme (all three mount modes, one pipeline)
+const tabs   = mountUIFXGroup(document.getElementById('tabs'), GroupType.TABS, PillTabs, { ticker: clock, theme, items: ['Sound', 'Video', 'About'] });
 
 // 4. One teardown per component; the clock is yours to keep or stop.
 mute.destroy();
 volume.destroy();
 pw.destroy();
+tabs.destroy();
 ```
 
 Every component rides `clock`; destroying one never touches the others or the clock. `colors` (a `string[]`) overrides `theme` when both are present. A bare mount -- no `theme`, no `colors` -- is byte-identical to the pre-theming rendering, so adopting a theme is opt-in and free when you skip it.
@@ -291,13 +325,13 @@ Everything a recipe needs is resolved in `init` (cold): the palette and any ramp
 | Pointer move / drag | **0** | arithmetic only; the bounding rect is cached on pointer-enter, not read per move |
 | `init` / theme resolve | once, cold | palette, ramps, gradients, pools -- then read-only in the loop |
 
-The `t3-frame-alloc` torture tier asserts, per recipe, **zero distinct `fillStyle` string allocations per frame at steady state** and **zero gradient constructions after `init`** -- in both a default and a themed mount, across all 56 recipes (a template-literal color fails this even when GC happens to hide it). The full harness (`@zakkster/lite-leak` + `@zakkster/lite-gc-profiler`) proves **0 retained bytes, 0 major GCs, and ~0.86 B/op** across the whole mount / interact / destroy loop under `--expose-gc`:
+The `t3-frame-alloc` torture tier asserts, per recipe, **zero distinct `fillStyle` string allocations per frame at steady state** and **zero gradient constructions after `init`** -- in both a default and a themed mount, across all 57 recipes (grouped controls included, driven through their selection). Two positive controls -- one allocating a color string per frame, one per group item per frame -- must FAIL the gate, or it would be decorative. The full harness (`@zakkster/lite-leak` + `@zakkster/lite-gc-profiler`) proves **0 retained bytes, 0 major GCs, and ~0.88 B/op** across the whole mount / interact / destroy loop under `--expose-gc`:
 
 ```
-GATE leak=size 0/0 findings=0 warnings=0 | gc major=0 minor=0 maxMs=0.00 | alloc=0.8564453125 B/op
+GATE leak=size 0/0 findings=0 warnings=0 | gc major=0 minor=0 maxMs=0.00 | alloc=0.8759765625 B/op
 ```
 
-For size: the controller alone is **~5.2 KB min+gzip** (its three deps external); the full catalog of 56 recipes is **~24 KB min+gzip**, and it tree-shakes -- import one recipe and the bundler drops the other 55.
+For size: the controller alone is **~7.1 KB min+gzip** (its three deps external); the full catalog of 57 recipes is **~25 KB min+gzip**, and it tree-shakes -- import one recipe and the bundler drops the other 56.
 
 </details>
 
@@ -307,18 +341,19 @@ For size: the controller alone is **~5.2 KB min+gzip** (its three deps external)
 
 Each is an ADR under [`decisions/`](decisions/):
 
-- **[0001](decisions/0001-recipes-position.md) -- Recipes ship inside the package.** No more copy-paste-from-a-ZIP: 56 recipes are versioned, typed, and tree-shakeable behind the `./recipes` subpath, exactly the shape the sibling fx packages use.
-- **[0002](decisions/0002-recipe-options.md) -- One recipe option convention.** `{ colors, theme, text, font }` across all 56, resolved cold in `init`; defaults reproduce today's literals byte-for-byte; `text` closes the WCAG label-in-name gap.
+- **[0001](decisions/0001-recipes-position.md) -- Recipes ship inside the package.** No more copy-paste-from-a-ZIP: 57 recipes are versioned, typed, and tree-shakeable behind the `./recipes` subpath, exactly the shape the sibling fx packages use.
+- **[0002](decisions/0002-recipe-options.md) -- One recipe option convention.** `{ colors, theme, text, font }` across all 57, resolved cold in `init`; defaults reproduce today's literals byte-for-byte; `text` closes the WCAG label-in-name gap.
 - **[0003](decisions/0003-element-types.md) -- Real native element types.** CHECKBOX (tri-state), PROGRESS (`setValue`-driven, opt-in `aria-live`), KNOB (native arrows + pointer map) wrap the *correct* native element, not a faked toggle.
 - **[0004](decisions/0004-decorate-mode.md) -- Decorate mode.** A second mount mode for a canvas around a live element -- the honest home for a decoration over a real input, host byte-identical.
 - **[0005](decisions/0005-host-clock.md) -- Host clock, reduced motion, frame budget.** Three clock modes, `state.reducedMotion` as a flag the recipe reads, `state.budget` for graceful degradation -- all additive, default path byte-identical.
 - **[0006](decisions/0006-docs-and-demo.md) -- Blueprint docs + a demo that consumes the package.** This README on the blueprint spine, and one demo generated from `RECIPE_META` that imports only public exports (no more inline reimplementation).
+- **[0007](decisions/0007-group-contract.md) -- Grouped controls: one canvas, N native elements.** A third mount mode (`mountUIFXGroup`) for radio/tabs/stepper/rating; `onSelect` is a ninth, group-only hook and group state a superset of scalar state, so the single-element API is byte-identical (additive, 1.9.0).
 
 ---
 
 ## Testing
 
-**205 deterministic node:test cases across 18 suites, all pass**, plus a torture gate that proves 0 B/op steady state and leak-freedom.
+**237 deterministic node:test cases across 27 suites, all pass**, plus a torture gate that proves 0 B/op steady state and leak-freedom.
 
 ```bash
 npm test          # node:test: contract, boundary, registry, theming, reduced-motion, docs
@@ -335,7 +370,7 @@ The suite covers the a11y state machine (one Space press = one `onToggle`, state
 - **Not a component framework.** It paints controls; it does not do layout, routing, or state management. Bring your own.
 - **Not a worker-mode renderer.** A 200x48 UI canvas does not amortise a worker hop; the shared main-thread ticker is the right tool. (`@zakkster/lite-ambient-fx` is the worker-mode fullscreen backdrop.)
 - **Not a chart or data-viz library.** These are interactive *controls*, not plots. Charts are `@zakkster/lite-charts`.
-- **Not an ARIA behaviour engine.** It renders; it does not own focus traps, dismiss stacks, or roving-tabindex logic. `@zakkster/lite-headless` owns behaviour, permanently -- and its 59 primitives are a decorate-mode skin target.
+- **Not an ARIA behaviour engine.** It renders. The one keyboard behaviour it writes is the tablist roving-tabindex for a `TABS` group (radio/rating/stepper selection is the browser's own); it does not own focus traps, dismiss stacks, or listbox/combobox/menu patterns. `@zakkster/lite-headless` owns behaviour, permanently -- and its 59 primitives are a decorate-mode skin target.
 
 ---
 

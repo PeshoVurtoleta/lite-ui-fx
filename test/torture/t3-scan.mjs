@@ -13,12 +13,19 @@
 // run), reads the lite-gc-profiler GC counts, and separately proves the
 // recording context sees zero in-tick gradient constructions.
 
-import { Ctx2DStub, RECIPES, RECIPE_META, gcGate } from './harness.mjs';
+import { Ctx2DStub, RECIPES, RECIPE_META, gcGate, GROUP_TYPES } from './harness.mjs';
 
 const HOT = 150000;   // major-GC backstop depth (minor is reported, not gated)
 const GRAD_FRAMES = 48;
 
 function baseState() {
+    // Group geometry (U7): a strip of GN items across w=160, preallocated once.
+    const GN = 5;
+    const itemX = new Float32Array(GN), itemY = new Float32Array(GN);
+    const itemW = new Float32Array(GN), itemH = new Float32Array(GN);
+    const labels = new Array(GN);
+    const iw = 160 / GN;
+    for (let k = 0; k < GN; k++) { itemX[k] = k * iw; itemW[k] = iw; itemH[k] = 48; labels[k] = String(k); }
     return {
         hover: false, active: false, focused: false, toggled: false, indeterminate: false,
         val: 0.5, w: 160, h: 48, padding: 40, dpr: 1,
@@ -26,6 +33,8 @@ function baseState() {
         text: '', valid: true,
         // Host-clock fields (U5): reduced-motion flag + frame budget.
         reducedMotion: false, budget: 1,
+        // Group fields (U7): selection + count + geometry lanes + labels.
+        index: 0, count: GN, hoverIndex: -1, labels, itemX, itemY, itemW, itemH,
     };
 }
 
@@ -43,6 +52,7 @@ function makeChurn(type) {
     const valued = type === 'slider' || type === 'knob' || type === 'progress';
     const toggled = type === 'toggle' || type === 'checkbox';
     const decorate = type === 'decorate';
+    const group = GROUP_TYPES.has(type);
     return function churn(recipe, st, ptr, i) {
         if ((i & 15) === 0) { st.hover = true; if (recipe.onHover) recipe.onHover(st, ptr); }
         else if ((i & 15) === 8) { st.hover = false; if (recipe.onLeave) recipe.onLeave(st, ptr); }
@@ -51,7 +61,17 @@ function makeChurn(type) {
         // every recipe are inside the alloc window -- a calm path that allocated
         // would trip the same t3 gate. (Recipes that ignore the flag are unaffected.)
         st.reducedMotion = (i & 127) < 32;
-        if (valued) {
+        if (group) {
+            // U7: walk the selection, firing onSelect on the change edge (as a
+            // native group would), and cycle hoverIndex -- so a group recipe's
+            // selection + hover draw paths run inside the alloc window.
+            const n = st.count;
+            if ((i & 7) === 0) {
+                st.index = (st.index + 1) % n;
+                if (recipe.onSelect) recipe.onSelect(st.index, st);
+            }
+            st.hoverIndex = (i & 15) < 8 ? (i % n) : -1;
+        } else if (valued) {
             const v = (Math.sin(i * 0.06) + 1) * 0.5;
             ptr.vx = (v - st.val) * 60; st.val = v;
             if (type !== 'progress' && (i & 7) === 0 && recipe.onDrag) recipe.onDrag(st.val, ptr.vx, st);
@@ -162,6 +182,22 @@ rows.push({
     cdist: colorDistinct(
         () => ({ tick(c) { c.fillStyle = 'rgba(1,2,3,' + Math.random() + ')'; c.fillRect(0, 0, 1, 1); } }),
         makeChurn('button'),
+    ),
+});
+
+// Group positive control (U7): a GROUP recipe that allocates a fresh color string
+// PER ITEM PER FRAME MUST trip the gate too -- proving the per-item hot path of a
+// grouped control is gated exactly like a scalar recipe's (decisions/0007).
+rows.push({
+    id: '__group_alloc_control__', type: 'radio', major: 0, minor: 0, grad: 0,
+    cdist: colorDistinct(
+        () => ({ tick(c, dt, now, st) {
+            for (let i = 0; i < st.count; i++) {   // per-item string alloc == violation
+                c.fillStyle = 'rgba(' + i + ',2,3,' + Math.random() + ')';
+                c.fillRect(st.itemX[i], 0, st.itemW[i], st.h);
+            }
+        } }),
+        makeChurn('radio'),
     ),
 });
 

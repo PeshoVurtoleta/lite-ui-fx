@@ -61,7 +61,7 @@ function judge(rows) {
         // non-default palette. The control row has no themed columns and is judged
         // on its (deliberately blown) default cdist alone.
         ok: r.major === 0 && r.grad === 0 && r.cdist <= COLOR_BUDGET &&
-            (r.id === '__alloc_control__' || (r.tgrad === 0 && r.tcdist <= COLOR_BUDGET)),
+            (r.id.startsWith('__') || (r.tgrad === 0 && r.tcdist <= COLOR_BUDGET)),
     }));
 }
 
@@ -80,21 +80,25 @@ export function reportT3() {
             ' (minor=' + r.minor + ')',
         );
     }
-    const real = rows.filter((r) => r.id !== '__alloc_control__');
-    const ctrl = rows.find((r) => r.id === '__alloc_control__');
+    const real = rows.filter((r) => !r.id.startsWith('__'));
+    const controls = rows.filter((r) => r.id.startsWith('__'));
+    const ctrlBad = controls.filter((r) => r.ok).length;
     console.error('t3 report: ' + real.filter((r) => r.ok).length + '/' + real.length +
-        ' pass (color-distinct budget ' + COLOR_BUDGET + '); control ' +
-        (ctrl && !ctrl.ok ? 'failed (good)' : 'PASSED (BAD)'));
+        ' pass (color-distinct budget ' + COLOR_BUDGET + '); controls ' +
+        (ctrlBad === 0 ? 'all failed (good)' : ctrlBad + ' PASSED (BAD)'));
     return rows;
 }
 
 export function runT3() {
     const rows = judge(runScan());
-    const ctrl = rows.find((r) => r.id === '__alloc_control__');
-    const real = rows.filter((r) => r.id !== '__alloc_control__');
-    // The positive control must FAIL, or the gate is decorative (t9 principle).
-    if (!ctrl || ctrl.ok) {
-        assert.fail('t3 positive control passed the gate -- t3-frame-alloc is decorative');
+    const controls = rows.filter((r) => r.id.startsWith('__'));
+    const real = rows.filter((r) => !r.id.startsWith('__'));
+    // BOTH positive controls (scalar per-frame + group per-item) must FAIL, or the
+    // gate is decorative (t9 principle). The group control proves the per-item hot
+    // path of a grouped control is gated exactly like a scalar recipe's.
+    assert.ok(controls.length >= 2, 't3 must ship both positive controls (scalar + group)');
+    for (const ctrl of controls) {
+        if (ctrl.ok) assert.fail('t3 positive control ' + ctrl.id + ' passed the gate -- t3-frame-alloc is decorative');
     }
     const fails = real.filter((r) => !r.ok);
     if (fails.length) {
@@ -105,6 +109,6 @@ export function runT3() {
         assert.fail('t3 frame-alloc: ' + fails.length + '/' + real.length +
             ' recipes allocate on a hot frame -> ' + detail);
     }
-    assert.equal(real.length, 56, 'all 56 recipes gated by t3');
+    assert.equal(real.length, 57, 'all 57 recipes gated by t3');
     return { gated: real.length };
 }

@@ -257,6 +257,22 @@ const SIZE = {
     batteryGauge: [150, 64], uploadProgress: [150, 72], timerCountdown: [96, 96],
 };
 
+// U7 grouped controls: N native elements + one canvas. mountRecipe routes a group
+// META.type ('radio'|'tabs'|'stepper'|'rating') to mountUIFXGroup, which needs the
+// per-item labels in `items`. Demo labels + a shape-appropriate strip box per recipe.
+const GROUP_TYPES = new Set(['radio', 'tabs', 'stepper', 'rating']);
+const GROUP_ITEMS = {
+    pillTabs: ['Alpha', 'Beta', 'Gamma'],
+    segmentedSlide: ['Day', 'Week', 'Month'],
+    radioOrbit: ['A', 'B', 'C', 'D'],
+    stepper: ['0', '1', '2', '3', '4', '5'],
+    bubbleRating: ['1', '2', '3', '4', '5'],
+};
+const GROUP_SIZE = {
+    pillTabs: [210, 40], segmentedSlide: [210, 40],
+    radioOrbit: [150, 150], stepper: [150, 52], bubbleRating: [180, 44],
+};
+
 // Per-decorate host input: a seeded value + a placeholder that invites the real
 // interaction each recipe reflects (all stay fully usable -- type into any of them).
 const DECOR_INPUT = {
@@ -270,6 +286,7 @@ const DECOR_INPUT = {
 let mounted = [];        // live instances, so a reduced-motion toggle can reach them
 let progressInsts = [];  // { inst, phase }: progress is host-driven, animated below
 let decorInsts = [];     // { id, inst, input }: form-feedback recipes, showcased below
+let groupInsts = [];     // { inst, count, phase }: U7 groups, selection cycled below
 
 // --- mount ONE recipe by its declared type (registry-driven, type-correct) ---
 function mountOne(meta, host, theme) {
@@ -287,6 +304,17 @@ function mountOne(meta, host, theme) {
         host.appendChild(input);
         const inst = decorateUIFX(input, RECIPES[meta.id], base);
         decorInsts.push({ id: meta.id, inst, input });
+        return inst;
+    }
+    if (GROUP_TYPES.has(meta.type)) {
+        // Group mode (U7): mountRecipe routes a group META.type to mountUIFXGroup,
+        // which needs `items`. N native elements + one canvas; selection cycled below.
+        const gopts = Object.assign({}, base);
+        gopts.items = GROUP_ITEMS[meta.id] || ['A', 'B', 'C', 'D'];
+        const gd = GROUP_SIZE[meta.id];
+        if (gd) { gopts.width = gd[0]; gopts.height = gd[1]; }
+        const inst = mountRecipe(host, meta.id, gopts);
+        groupInsts.push({ inst, count: gopts.items.length, phase: groupInsts.length * 0.7 });
         return inst;
     }
     // Hijack mode: mountRecipe asserts META.type and routes to mountUIFX.
@@ -308,6 +336,7 @@ function buildGallery() {
     mounted = [];
     progressInsts = [];
     decorInsts = [];
+    groupInsts = [];
     $gallery.textContent = '';
 
     const theme = THEMES[$theme.value];
@@ -400,6 +429,13 @@ setInterval(() => {
             s.valid = Math.floor((t + 1300) / 2600) % 2 === 0;   // offset -> bloom on the valid edge
         }
     }
+    for (const g of groupInsts) {
+        // Cycle the selection so each group animates through its states (U7).
+        // setIndex writes native + state + fires onSelect -- all writes, no layout
+        // READ, so the gallery stays reflow-clean under #profile.
+        const i = Math.floor(t / 1500 + g.phase) % g.count;
+        if (i !== g.inst.state.index) g.inst.setIndex(i);
+    }
 }, 90);
 
 // --- #profile: the forced-reflow gate (dev-only, dormant unless the hash) -----
@@ -412,8 +448,9 @@ if (location.hash === '#profile') {
         // The gallery is already mounted. Mount is a COLD path: decorateUIFX must
         // read the host's offset box once to place its overlay -- an expected,
         // one-time read, not a frame killer. The gate profiles the HOT paths that
-        // must stay reflow-free: 56 recipes ticking every frame, pointer hover,
-        // and the reduced-motion toggle. That is the U-11 guarantee made visible.
+        // must stay reflow-free: 57 recipes ticking every frame, pointer hover,
+        // the reduced-motion toggle, and group selection. That is the U-11
+        // guarantee made visible.
         const profiler = m.createLayoutProfiler();
         window.__layout = profiler;
 
@@ -431,6 +468,12 @@ if (location.hash === '#profile') {
             target.dispatchEvent(new PointerEvent('pointerenter'));
             target.dispatchEvent(new PointerEvent('pointermove', { clientX: 8, clientY: 8 }));
             target.dispatchEvent(new PointerEvent('pointerleave'));
+        }
+
+        // Interaction 3 (U7): walk every group's selection via setIndex -- native +
+        // state writes + onSelect, no layout READ, so a group stays reflow-clean.
+        for (const g of groupInsts) {
+            for (let k = 0; k < g.count; k++) g.inst.setIndex(k);
         }
 
         // Let several frames of every recipe's tick run, then report the verdict.

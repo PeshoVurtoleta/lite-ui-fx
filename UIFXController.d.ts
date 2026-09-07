@@ -14,6 +14,23 @@ export declare const UIType: Readonly<{
     KNOB: 'knob';
 }>;
 
+export type GroupTypeValue = 'radio' | 'tabs' | 'stepper' | 'rating';
+
+/**
+ * Grouped-control types (U7, decisions/0007). Each mounts N native elements + one
+ * canvas + one recipe via mountUIFXGroup (NOT a UIType -- routed separately).
+ */
+export declare const GroupType: Readonly<{
+    /** fieldset + N <input type=radio>; native roving arrow-key selection. */
+    RADIO: 'radio';
+    /** role=tablist + N role=tab buttons; hand-written APG roving tabindex + arrows/Home/End. */
+    TABS: 'tabs';
+    /** one <input type=number> spinbutton; native Up/Down + typing. */
+    STEPPER: 'stepper';
+    /** radiogroup of N radios (rating semantics); native roving selection. */
+    RATING: 'rating';
+}>;
+
 export interface UIFXState {
     hover: boolean;
     active: boolean;
@@ -214,5 +231,115 @@ export declare function decorateUIFX(
     recipeFactory: RecipeFactory,
     options?: DecorateOptions
 ): DecorateInstance;
+
+// =========================================================
+//  Grouped controls (U7, decisions/0007)
+// =========================================================
+
+/**
+ * Per-frame state for a grouped control: the scalar UIFXState SUPERSET plus the
+ * group fields. The single-value fields (val/toggled/indeterminate) are neutral
+ * for a group -- a group uses `index`/`count`. Geometry lanes are Float32Arrays of
+ * length `count` the recipe reads by index (zero per-frame allocation).
+ */
+export interface UIFXGroupState extends UIFXState {
+    /** The selected item index, 0..count-1. */
+    index: number;
+    /** The number of items (multi-element groups) or steps (stepper). */
+    count: number;
+    /** The item currently under the pointer, or -1 when none. */
+    hoverIndex: number;
+    /** The item label strings (the mount's `items`); read by the recipe, never mutated. */
+    labels: string[];
+    /** Per-item x offset in strip coordinates (length count). */
+    itemX: Float32Array;
+    /** Per-item y offset (length count). */
+    itemY: Float32Array;
+    /** Per-item width (length count). */
+    itemW: Float32Array;
+    /** Per-item height (length count). */
+    itemH: Float32Array;
+}
+
+/**
+ * A group recipe: the eight standard hooks (with group state) PLUS onSelect, the
+ * ninth, group-only hook. onSelect is rejected by mountUIFX/decorateUIFX (fail
+ * closed), so a recipe carrying it mounts only as a group.
+ */
+export interface UIFXGroupRecipe {
+    init?(ctx: CanvasRenderingContext2D, w: number, h: number, padding: number): void;
+    tick(ctx: CanvasRenderingContext2D, dt: number, now: number, state: UIFXGroupState, pointer: UIFXPointer): void;
+    onHover?(state: UIFXGroupState, pointer: UIFXPointer): void;
+    onLeave?(state: UIFXGroupState, pointer: UIFXPointer): void;
+    onClick?(x: number, y: number, state: UIFXGroupState): void;
+    onToggle?(checked: boolean, state: UIFXGroupState): void;
+    onDrag?(value: number, velocity: number, state: UIFXGroupState): void;
+    /** U7: fired exactly once per selection change, with the new index. */
+    onSelect?(index: number, state: UIFXGroupState): void;
+    destroy?(): void;
+}
+
+export type GroupRecipeFactory = () => UIFXGroupRecipe;
+
+/**
+ * Options for mountUIFXGroup. `items` (the per-item labels) is REQUIRED, >=2
+ * strings; its length is the item/step count. The initial selection is `index`
+ * (an integer, distinct from the hijack float `value`). The hijack-only keys
+ * (value/checked/knobMode/announce) are rejected -- passing one throws.
+ */
+export interface GroupOptions extends HostClockOptions {
+    /** The per-item labels; >=2 strings. Length = item/step count. Required. */
+    items: string[];
+    /** Initial selected index, integer in [0, items.length-1] (default 0). */
+    index?: number;
+    /** Accessible group label (fieldset/tablist aria-label). */
+    label?: string;
+    /** Total strip width in px (default: per-type item width * count). */
+    width?: number;
+    /** Strip height in px (default per group type). */
+    height?: number;
+    /** Canvas overflow padding in px (default 40). */
+    padding?: number;
+    /** Disable every native element + set state.disabled. */
+    disabled?: boolean;
+    seed?: number;
+    colors?: string[];
+    theme?: { light: string; mid: string; dark: string };
+    text?: string;
+    font?: string;
+}
+
+export interface UIFXGroupInstance {
+    /** The native interactive elements (radios / tabs, or the single spinbutton). */
+    els: HTMLElement[];
+    canvas: HTMLCanvasElement;
+    wrapper: HTMLDivElement;
+    state: UIFXGroupState;
+    /** The selected index right now (convenience over state.index). */
+    readonly index: number;
+    /** Drive one frame by hand (U5). Callable ONLY with { driven: true }. */
+    tick(dtMs: number): void;
+    /**
+     * Programmatically select item i in [0, count-1]: updates the native
+     * element(s), state.index, and fires onSelect exactly once (no native event,
+     * so no double fire). Does NOT steal focus. Throws on a bad index.
+     */
+    setIndex(i: number): void;
+    destroy(): void;
+}
+
+/**
+ * Mount a grouped control: N native elements (radios in a fieldset, tabs in a
+ * tablist, a spinbutton, a rating radiogroup) sharing ONE canvas and one recipe
+ * (decisions/0007). The native elements own selection + keyboard + a11y; the
+ * canvas paints the group by reading state.index/state.count and the per-item
+ * geometry lanes. Additive to mountUIFX/decorateUIFX -- neither is touched.
+ */
+export declare function mountUIFXGroup(
+    container: HTMLElement,
+    groupType: GroupTypeValue,
+    recipeFactory: GroupRecipeFactory,
+    options: GroupOptions
+): UIFXGroupInstance;
 
 export default mountUIFX;

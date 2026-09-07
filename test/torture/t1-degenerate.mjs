@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import {
-    mountUIFX, decorateUIFX, UIType, makeContainer, setDpr, raf, RECIPES, RECIPE_META,
+    mountUIFX, decorateUIFX, mountUIFXGroup, GROUP_TYPES, groupItems, UIType, makeContainer, setDpr, raf, RECIPES, RECIPE_META,
 } from './harness.mjs';
 
 const counting = () => ({ tick() {} });
@@ -143,6 +143,33 @@ export async function runT1() {
             continue;
         }
 
+        // Group recipes (U7): mount N native elements + one canvas via
+        // mountUIFXGroup. Degenerate = tiny/huge geometry AND a small vs large item
+        // count; selection is walked with setIndex (valid), rapid focus/hover flips.
+        if (GROUP_TYPES.has(m.type)) {
+            assert.doesNotThrow(() => {
+                for (const cfg of [
+                    { items: groupItems(2), width: 1, height: 1, padding: 0 },
+                    { items: groupItems(5), width: 300, height: 48, padding: 40 },
+                    { items: groupItems(12), width: 4000, height: 2000, padding: 200 },
+                ]) {
+                    const inst = mountUIFXGroup(container, m.type, base, cfg);
+                    inst.state.hover = true; inst.state.active = true;
+                    pump(2);
+                    const n = cfg.items.length;
+                    for (let k = 0; k < 8; k++) {
+                        inst.setIndex(k % n);            // valid selection walk
+                        inst.state.focused = (k & 1) === 1;
+                        inst.state.hoverIndex = (k & 1) ? (k % n) : -1;
+                        pump(1);
+                    }
+                    inst.destroy();
+                }
+            }, m.id + ' (group) survives degenerate geometry / item counts / rapid selection');
+            swept++;
+            continue;
+        }
+
         assert.doesNotThrow(() => {
             // Degenerate geometry: zero-ish and absurd sizes both construct+run.
             for (const dims of [{ width: 1, height: 1, padding: 0 }, { width: 300, height: 48, padding: 40 }, { width: 4000, height: 2000, padding: 200 }]) {
@@ -169,7 +196,7 @@ export async function runT1() {
         swept++;
     }
     assert.equal(swept, RECIPE_META.length, 'every RECIPE_META row swept');
-    assert.equal(swept, 56, 'all 56 recipes swept through degenerate inputs');
+    assert.equal(swept, 57, 'all 57 recipes swept through degenerate inputs');
     assert.equal(raf.pending(), 0, 't1 degenerate sweep leaves raf pending at 0');
 
     return { swept };
