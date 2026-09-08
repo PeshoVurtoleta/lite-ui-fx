@@ -213,7 +213,7 @@ The fourth mount adapter, on the `./headless` subpath: **skin a `@zakkster/lite-
 
 `options`: `host` (the element the primitive paints on, **required**) plus `padding`, `seed`, `colors`, `theme`, `text`, `font`, `ticker`, `driven`. `setValue`/`setChecked` throw -- a skin reflects the primitive, it does not drive it.
 
-A skin is an ordinary recipe plus a descriptor -- `recipe.headless = { attrs, read(host, handle, state) }`. `skinHeadless` observes `attrs` and calls `read()` at **event time** (never per frame) to parse the painted state into preallocated slots. A painted attribute is truthy when present with any value but `"false"` (so both a boolean `data-disabled` and a value `data-checked="true"` work). The four E1 skins live in a registry (`HEADLESS_SKINS` / `SKIN_META`) separate from the 57 recipes.
+A skin is an ordinary recipe plus a descriptor -- `recipe.headless = { attrs, read(host, handle, state) }`. `skinHeadless` observes `attrs` and calls `read()` at **event time** (never per frame) to parse the painted state into preallocated slots. A painted attribute is truthy when present with any value but `"false"` (so both a boolean `data-disabled` and a value `data-checked="true"` work). The 11 skins live in a registry (`HEADLESS_SKINS` / `SKIN_META`) separate from the 57 recipes.
 
 ```js
 import { skinHeadless, SwitchSkin } from '@zakkster/lite-ui-fx/headless';
@@ -231,7 +231,7 @@ const skin = skinHeadless(sw, SwitchSkin, {
 skin.destroy();                                         // host + handle left untouched
 ```
 
-E1 skins: `SwitchSkin` (`data-checked`), `SliderSkin` (`aria-valuenow`/`min`/`max`), `ProgressSkin` (`aria-valuenow`/`max` + `data-complete`/`data-loading`), `RatingSkin` (`aria-valuenow`/`max`). See [0008](decisions/0008-headless-skins.md).
+E1 skins: `SwitchSkin` (`data-checked`), `SliderSkin` (`aria-valuenow`/`min`/`max`), `ProgressSkin` (`aria-valuenow`/`max` + `data-complete`/`data-loading`), `RatingSkin` (`aria-valuenow`/`max`). E1b skins: `CheckboxSkin` (tri-state `aria-checked` `true`|`false`|`mixed`), `CheckboxGroupSkin` (the same body over a checkbox-group master), `SelectSkin` (the select **trigger** -- `aria-expanded` + `handle.value()`; the portaled listbox open-state is a follow-on), `MeterSkin` (`aria-valuenow`/`min`/`max` + `data-zone`), `StepsSkin` (`data-step-count`/`data-current-index`), `AccordionSkin` (`aria-expanded`/`data-open`), `SkeletonSkin` (`data-loading`/`aria-busy`). See [0008](decisions/0008-headless-skins.md) + [0009](decisions/0009-headless-skins-select.md).
 
 ### The recipe registry
 
@@ -377,6 +377,7 @@ Each is an ADR under [`decisions/`](decisions/):
 - **[0006](decisions/0006-docs-and-demo.md) -- Blueprint docs + a demo that consumes the package.** This README on the blueprint spine, and one demo generated from `RECIPE_META` that imports only public exports (no more inline reimplementation).
 - **[0007](decisions/0007-group-contract.md) -- Grouped controls: one canvas, N native elements.** A third mount mode (`mountUIFXGroup`) for radio/tabs/stepper/rating; `onSelect` is a ninth, group-only hook and group state a superset of scalar state, so the single-element API is byte-identical (additive, 1.9.0).
 - **[0008](decisions/0008-headless-skins.md) -- Headless skins: paint a lite-headless primitive.** `skinHeadless` couples through the painted-attribute contract (one `MutationObserver`, parsed at event time), never an import -- so lite-headless is a compose-target, never a dependency. The four skins live in a registry separate from the 57 recipes (additive, 1.10.0).
+- **[0009](decisions/0009-headless-skins-select.md) -- Headless skins II: the select + tri-state pack.** Adds seven bespoke skins (checkbox tri-state + checkbox-group master, select trigger, meter, steps, accordion, skeleton), all single-host and mapping onto the existing state slots (no state-shape change). `SelectSkin` resolves the `<select>`/dropdown decision toward a V4 skin of the trigger; the portaled listbox open-state is a recorded follow-on. No new dependency (additive, 1.11.0).
 
 ---
 
@@ -399,7 +400,7 @@ The suite covers the a11y state machine (one Space press = one `onToggle`, state
 - **Not a component framework.** It paints controls; it does not do layout, routing, or state management. Bring your own.
 - **Not a worker-mode renderer.** A 200x48 UI canvas does not amortise a worker hop; the shared main-thread ticker is the right tool. (`@zakkster/lite-ambient-fx` is the worker-mode fullscreen backdrop.)
 - **Not a chart or data-viz library.** These are interactive *controls*, not plots. Charts are `@zakkster/lite-charts`.
-- **Not an ARIA behaviour engine.** It renders. The one keyboard behaviour it writes is the tablist roving-tabindex for a `TABS` group (radio/rating/stepper selection is the browser's own); it does not own focus traps, dismiss stacks, or listbox/combobox/menu patterns. `@zakkster/lite-headless` owns behaviour, permanently -- and its 59 primitives are a decorate-mode skin target.
+- **Not an ARIA behaviour engine.** It renders. The one keyboard behaviour it writes is the tablist roving-tabindex for a `TABS` group (radio/rating/stepper selection is the browser's own); it does not own focus traps, dismiss stacks, or listbox/combobox/menu patterns. `@zakkster/lite-headless` owns behaviour, permanently -- and its 62 primitives are a headless-skin target.
 
 ---
 
@@ -412,7 +413,7 @@ Part of the **@zakkster** zero-GC stack:
 - [`lite-random`](https://www.npmjs.com/package/@zakkster/lite-random) -- seeded Mulberry32 RNG (deterministic particle recipes)
 - [`lite-scratch-fx`](https://www.npmjs.com/package/@zakkster/lite-scratch-fx) -- canvas scratch-reveal recipes; shares the `{ light, mid, dark }` theme shape
 - [`lite-ambient-fx`](https://www.npmjs.com/package/@zakkster/lite-ambient-fx) -- fullscreen ambient backdrops (the worker-mode sibling)
-- [`lite-headless`](https://www.npmjs.com/package/@zakkster/lite-headless) -- 59 ARIA-correct primitives; a decorate-mode skin target
+- [`lite-headless`](https://www.npmjs.com/package/@zakkster/lite-headless) -- 62 ARIA-correct primitives; a headless-skin target (`skinHeadless`)
 - **`lite-ui-fx`** -- this package
 
 ---

@@ -5,6 +5,50 @@ All notable changes to `@zakkster/lite-ui-fx` are documented here.
 The format follows Keep a Changelog; this project adheres to Semantic
 Versioning.
 
+## [1.11.0] -- 2026-09-08
+
+Enrichment session E1b (decisions/0009): seven bespoke headless skins continuing the
+E1 adapter -- the select trigger (resolving the dropdown decision toward a V4 skin),
+a tri-state checkbox + checkbox-group master, and meter/steps/accordion/skeleton.
+Single-host, no new dependency; the 57-recipe registry is byte-identical.
+
+### Added
+
+- Seven headless skins on the `./headless` subpath, registered in the sibling
+  `HEADLESS_SKINS` / `SKIN_META` / `SKIN_NAMES` (4 -> 11 skins; RECIPES / RECIPE_META
+  and the 57-recipe count unchanged). Each is single-host, themeable, and allocates
+  zero bytes per frame, gated by the t6 torture tier (now gating 11 skins):
+  - `CheckboxSkin` -- tri-state from `aria-checked` (`true`|`false`|`mixed`) or the
+    `data-checked` / `data-indeterminate` presence pair, onto the existing `toggled`
+    / `indeterminate` state slots.
+  - `CheckboxGroupSkin` -- the same body over a checkbox-group master (identical
+    3-state contract; "mixed" reads as partial members).
+  - `SelectSkin` -- the select TRIGGER: `aria-expanded` drives an open/close chevron,
+    the handle `value()` fast path drives a selected-value dot. The portaled listbox
+    open-state is a recorded follow-on (decisions/0009).
+  - `MeterSkin` -- `aria-valuenow`/`min`/`max` fill, zone-tinted from `data-zone`.
+  - `StepsSkin` -- a node rail from `data-step-count` / `data-current-index` /
+    `data-complete`.
+  - `AccordionSkin` -- a header chevron + underline from `aria-expanded` / `data-open`.
+  - `SkeletonSkin` -- a zero-allocation `globalAlpha` shimmer from `data-loading` /
+    `aria-busy`.
+  `@zakkster/lite-headless` is imported nowhere and is not a dependency; no dependency
+  was added.
+
+### Changed
+
+- `llms.txt` and `README.md`: the `./headless` skin catalog lists all 11 skins, and
+  the sibling primitive count is corrected ("59" -> 62, the `@zakkster/lite-headless`
+  1.9.1 catalog). Documentation only; no code path changed.
+
+### Fixed
+
+none
+
+### Removed
+
+none
+
 ## [1.10.0] -- 2026-09-08
 
 Enrichment session E1: skinHeadless, a fourth mount adapter that paints a

@@ -14,6 +14,7 @@ installDom();
 const { skinHeadless } = await import('../UIFXController.js');
 const {
     SwitchSkin, SliderSkin, ProgressSkin, RatingSkin,
+    CheckboxSkin, CheckboxGroupSkin, SelectSkin, MeterSkin, StepsSkin, AccordionSkin, SkeletonSkin,
     HEADLESS_SKINS, SKIN_META, SKIN_NAMES,
 } = await import('../UIFXHeadless.js');
 const { SwarmToggle } = await import('../UIFXRecipes.js');
@@ -229,9 +230,13 @@ describe('skinHeadless -- driven paint + hijack-only setters', () => {
 });
 
 describe('headless-skin registry', () => {
-    it('SKIN_META has the four E1 skins', () => {
-        assert.equal(SKIN_META.length, 4);
-        assert.deepEqual(SKIN_NAMES.slice(), ['switchSkin', 'sliderSkin', 'progressSkin', 'ratingSkin']);
+    it('SKIN_META has the E1 + E1b skins in order', () => {
+        assert.equal(SKIN_META.length, 11);
+        assert.deepEqual(SKIN_NAMES.slice(), [
+            'switchSkin', 'sliderSkin', 'progressSkin', 'ratingSkin',
+            'checkboxSkin', 'checkboxGroupSkin', 'selectSkin', 'meterSkin',
+            'stepsSkin', 'accordionSkin', 'skeletonSkin',
+        ]);
     });
     it('HEADLESS_SKINS is a null-prototype id -> factory map', () => {
         assert.equal(Object.getPrototypeOf(HEADLESS_SKINS), null);
@@ -279,4 +284,138 @@ describe('skinHeadless -- retention across churn', () => {
         assert.equal(t.size, 0, 'no frames retained on the caller ticker');
         assert.equal(t.destroyed, false, 'caller ticker never destroyed');
     });
+});
+
+// ---------------------------------------------------------------------------
+// E1b (decisions/0009): the select + tri-state pack.
+// ---------------------------------------------------------------------------
+
+describe('E1b -- checkbox tri-state (CheckboxSkin / CheckboxGroupSkin)', () => {
+    it('CheckboxGroupSkin shares the checkbox tri-state body (one body, two ids)', () => {
+        assert.equal(CheckboxGroupSkin, CheckboxSkin);
+        assert.equal(HEADLESS_SKINS.checkboxSkin, CheckboxSkin);
+        assert.equal(HEADLESS_SKINS.checkboxGroupSkin, CheckboxSkin);
+    });
+    it('aria-checked value form maps true / false / mixed', () => {
+        const { host } = makeHost('span', 24, 24);
+        const skin = skinHeadless(null, CheckboxSkin, { host, driven: true });
+        host.setAttribute('aria-checked', 'true');
+        assert.equal(skin.state.toggled, true);
+        assert.equal(skin.state.indeterminate, false);
+        host.setAttribute('aria-checked', 'mixed');
+        assert.equal(skin.state.indeterminate, true, 'mixed -> indeterminate');
+        assert.equal(skin.state.toggled, false, 'mixed is not toggled');
+        host.setAttribute('aria-checked', 'false');
+        assert.equal(skin.state.toggled, false);
+        assert.equal(skin.state.indeterminate, false);
+        skin.destroy();
+    });
+    it('data-* presence pair: data-checked / data-indeterminate', () => {
+        const { host } = makeHost('span', 24, 24);
+        const skin = skinHeadless(null, CheckboxSkin, { host, driven: true });
+        host.setAttribute('data-checked', '');       // presence
+        assert.equal(skin.state.toggled, true, 'presence = checked');
+        host.setAttribute('data-indeterminate', '');
+        assert.equal(skin.state.indeterminate, true, 'presence = mixed');
+        assert.equal(skin.state.toggled, false, 'mixed wins over checked');
+        skin.destroy();
+    });
+});
+
+describe('E1b -- select trigger (SelectSkin, resolves item 6)', () => {
+    it('aria-expanded drives toggled (open/closed)', () => {
+        const { host } = makeHost('button', 120, 32);
+        const skin = skinHeadless(null, SelectSkin, { host, driven: true });
+        assert.equal(skin.state.toggled, false);
+        host.setAttribute('aria-expanded', 'true');
+        assert.equal(skin.state.toggled, true, 'open');
+        host.setAttribute('aria-expanded', 'false');
+        assert.equal(skin.state.toggled, false, 'closed');
+        skin.destroy();
+    });
+    it('handle.value() fast path sets complete when a selection exists', () => {
+        const { host } = makeHost('button', 120, 32);
+        let val = null;
+        const handle = { value: () => val };
+        const skin = skinHeadless(handle, SelectSkin, { host, driven: true });
+        assert.equal(skin.state.complete, false, 'no selection at mount');
+        val = 'apple';
+        host.setAttribute('aria-expanded', 'false');   // the close edge re-runs read()
+        assert.equal(skin.state.complete, true, 'value() -> complete');
+        skin.destroy();
+    });
+});
+
+describe('E1b -- meter / steps / accordion / skeleton state', () => {
+    it('MeterSkin maps value + data-zone (optimum -> complete, low -> error)', () => {
+        const { host } = makeHost('div', 120, 16);
+        host.setAttribute('aria-valuemax', '100');
+        host.setAttribute('aria-valuenow', '40');
+        const skin = skinHeadless(null, MeterSkin, { host, driven: true });
+        assert.equal(skin.state.val, 0.4);
+        host.setAttribute('data-zone', 'optimum');
+        assert.equal(skin.state.complete, true);
+        assert.equal(skin.state.error, false);
+        host.setAttribute('data-zone', 'low');
+        assert.equal(skin.state.error, true);
+        assert.equal(skin.state.complete, false);
+        skin.destroy();
+    });
+    it('StepsSkin reads count + current index, complete fills all', () => {
+        const { host } = makeHost('ol', 200, 20);
+        host.setAttribute('data-step-count', '4');
+        host.setAttribute('data-current-index', '2');
+        const skin = skinHeadless(null, StepsSkin, { host, driven: true });
+        assert.equal(skin.state.count, 4);
+        assert.equal(skin.state.val, 2);
+        host.setAttribute('data-complete', '');
+        assert.equal(skin.state.complete, true);
+        skin.destroy();
+    });
+    it('AccordionSkin reads aria-expanded / data-open as toggled', () => {
+        const { host } = makeHost('button', 160, 32);
+        const skin = skinHeadless(null, AccordionSkin, { host, driven: true });
+        host.setAttribute('data-open', '');
+        assert.equal(skin.state.toggled, true);
+        host.removeAttribute('data-open');
+        host.setAttribute('aria-expanded', 'true');
+        assert.equal(skin.state.toggled, true);
+        skin.destroy();
+    });
+    it('SkeletonSkin reads data-loading / aria-busy as indeterminate', () => {
+        const { host } = makeHost('div', 120, 16);
+        host.setAttribute('data-loading', '');
+        const skin = skinHeadless(null, SkeletonSkin, { host, driven: true });
+        assert.equal(skin.state.indeterminate, true);
+        assert.equal(skin.state.complete, false);
+        host.removeAttribute('data-loading');
+        assert.equal(skin.state.indeterminate, false);
+        assert.equal(skin.state.complete, true, 'ready');
+        skin.destroy();
+    });
+});
+
+describe('E1b -- additive host diff + exact restore (every new skin)', () => {
+    const CASES = [
+        ['checkboxSkin', 'span', 'aria-checked', 'mixed'],
+        ['selectSkin', 'button', 'aria-expanded', 'true'],
+        ['meterSkin', 'div', 'data-zone', 'low'],
+        ['stepsSkin', 'ol', 'data-current-index', '1'],
+        ['accordionSkin', 'button', 'data-open', ''],
+        ['skeletonSkin', 'div', 'data-loading', ''],
+    ];
+    for (const [id, tag, attr, val] of CASES) {
+        it(id + ' adds no host attribute and restores on destroy', () => {
+            const { container, host } = makeHost(tag, 100, 24);
+            host.setAttribute(attr, val);
+            const before = host._attrs.size;
+            const skin = skinHeadless(null, HEADLESS_SKINS[id], { host, driven: true });
+            skin.tick(16);
+            assert.equal(host._attrs.size, before, id + ' added no host attribute');
+            const canvas = skin.canvas;
+            skin.destroy();
+            assert.equal(canvas.parentNode, null, 'overlay removed');
+            assert.equal(host.parentNode, container, 'host intact');
+        });
+    }
 });

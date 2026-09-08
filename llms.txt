@@ -1,7 +1,7 @@
 # @zakkster/lite-ui-fx
 > Canvas-hijacked UI components with pluggable recipe system. 57 built-in recipes.
 
-VERSION 1.10.0
+VERSION 1.11.0
 
 ## Install
 npm i @zakkster/lite-ui-fx
@@ -96,6 +96,7 @@ driven    // U5 host clock: boolean; true = no ticker/RAF, the host calls instan
 // identical, one overlay canvas + one MutationObserver removed on destroy; the
 // lite-headless handle is never destroyed (the caller owns it).
 import { skinHeadless, SwitchSkin, SliderSkin, ProgressSkin, RatingSkin } from '@zakkster/lite-ui-fx/headless';
+import { CheckboxSkin, CheckboxGroupSkin, SelectSkin, MeterSkin, StepsSkin, AccordionSkin, SkeletonSkin } from '@zakkster/lite-ui-fx/headless'; // E1b
 import { HEADLESS_SKINS, SKIN_META, SKIN_NAMES } from '@zakkster/lite-ui-fx/headless';
 const skin = skinHeadless(handle, SwitchSkin, { host: switchThumbEl, theme });
 skin.el          // the skinned host (unchanged)
@@ -108,12 +109,19 @@ skin.destroy()   // remove overlay + observer + listeners; host + handle untouch
 //   EVENT time (never per frame) to parse painted state into preallocated slots.
 // options: { host(REQUIRED), padding, seed, colors, theme, text, font, ticker, driven };
 //   hijack-only keys throw. setValue/setChecked throw (a skin reflects the primitive).
-// E1 skins (SKIN_META, a registry SEPARATE from RECIPES -- the 57-recipe count is
-//   unchanged): SwitchSkin (data-checked/aria-checked), SliderSkin (aria-valuenow/
-//   min/max + data-dragging), ProgressSkin (aria-valuenow/max + data-complete/
-//   data-loading), RatingSkin (aria-valuenow/max over N items). Each themeable, born
-//   zero-alloc + t6-gated. A painted attr is truthy when PRESENT with any value but
-//   "false" (handles boolean data-disabled and value data-checked="true").
+// Skins (SKIN_META, a registry SEPARATE from RECIPES -- the 57-recipe count is
+//   unchanged). E1: SwitchSkin (data-checked/aria-checked), SliderSkin (aria-
+//   valuenow/min/max + data-dragging), ProgressSkin (aria-valuenow/max + data-
+//   complete/data-loading), RatingSkin (aria-valuenow/max over N). E1b (0009):
+//   CheckboxSkin (tri-state aria-checked true|false|mixed + data-checked/data-
+//   indeterminate), CheckboxGroupSkin (same body over a checkbox-group master),
+//   SelectSkin (the select TRIGGER: aria-expanded + handle.value(); the portaled
+//   listbox open-state is a follow-on), MeterSkin (aria-valuenow/min/max + data-zone),
+//   StepsSkin (data-step-count/data-current-index/data-complete), AccordionSkin
+//   (aria-expanded/data-open), SkeletonSkin (data-loading/aria-busy shimmer). 11
+//   total, each themeable, born zero-alloc + t6-gated. A painted attr is truthy when
+//   PRESENT with any value but "false" (handles boolean data-disabled and value
+//   data-checked="true").
 
 ## Host clock (U5) -- three mutually-exclusive modes, both mount modes
 // default (neither option): the shared ref-counted ticker -- one RAF for all
@@ -250,7 +258,11 @@ See UIFX-RECIPE-GUIDE.md (included in package).
   paints a @zakkster/lite-headless primitive by OBSERVING its painted state
   attributes (one MutationObserver; parsed at event time, never per frame) --
   lite-ui-fx paints, lite-headless behaves. lite-headless is a compose-target, NEVER
-  a dependency (the package imports it nowhere). 4 skins (switch/slider/progress/
-  rating) live in a registry (HEADLESS_SKINS/SKIN_META) SEPARATE from the 57 recipes;
-  each themeable + zero per-frame alloc (t6-gated). setValue/setChecked throw (a skin
-  reflects the primitive); destroy leaves the host + handle untouched. See 0008.
+  a dependency (the package imports it nowhere). 11 skins live in a registry
+  (HEADLESS_SKINS/SKIN_META) SEPARATE from the 57 recipes: E1 switch/slider/progress/
+  rating; E1b (decisions/0009) checkbox (tri-state) + checkbox-group master, select
+  (the trigger -- resolving the dropdown/item-6 decision toward a V4 skin; the
+  portaled listbox open-state is a follow-on), meter, steps, accordion, skeleton --
+  still bespoke (no lite-particles). Each themeable + zero per-frame alloc (t6-gated).
+  setValue/setChecked throw (a skin reflects the primitive); destroy leaves the host
+  + handle untouched. See 0008 + 0009.

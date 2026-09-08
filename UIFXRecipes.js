@@ -3621,6 +3621,251 @@ export function RatingSkin(o = {}) {
     };
 }
 
+/** Checkbox skin (E1b, decisions/0009) -- a box that draws a tick when checked
+ *  and a dash when indeterminate ("mixed"). Tri-state read from aria-checked (the
+ *  VALUE form true|false|mixed) or the data-* presence pair -- both map onto the
+ *  EXISTING toggled + indeterminate slots (no state-shape change). CheckboxGroupSkin
+ *  aliases this: a checkbox-group master paints the identical 3-state contract, so
+ *  "mixed" just reads as "some members". Zero per-frame alloc. */
+export function CheckboxSkin(o = {}) {
+    const P = resolveTheme(o, { accent: '#38bdf8', dim: '#3a3a4a', dim2: '#e2e2f0' });
+    let on = 0;   // eased box fill (checked or mixed)
+    let mk = 0;   // eased mark draw
+    return {
+        headless: {
+            attrs: ['aria-checked', 'data-checked', 'data-indeterminate', 'data-disabled', 'aria-disabled'],
+            read(host, handle, st) {
+                const ac = host.getAttribute('aria-checked');       // value form: true|false|mixed
+                st.indeterminate = ac === 'mixed' || _skinBool(host, 'data-indeterminate');
+                st.toggled = !st.indeterminate && (ac === 'true' || _skinBool(host, 'data-checked'));
+                st.disabled = _skinBool(host, 'data-disabled') || _ariaTrue(host, 'aria-disabled');
+            },
+        },
+        tick(c, dt, now, st) {
+            const s = st.w < st.h ? st.w : st.h;
+            const bx = (st.w - s) / 2, by = (st.h - s) / 2, rr = s * 0.22;
+            const filled = st.toggled || st.indeterminate;
+            const k = dt * 14;
+            on += ((filled ? 1 : 0) - on) * (k > 1 ? 1 : k);
+            mk += ((filled ? 1 : 0) - mk) * (k > 1 ? 1 : k);
+            const base = st.disabled ? 0.4 : 1;
+            c.globalAlpha = base;
+            c.strokeStyle = P.dim; c.lineWidth = 2;
+            roundRect(c, bx + 1, by + 1, s - 2, s - 2, rr); c.stroke();
+            if (on > 0.01) {
+                c.globalAlpha = base * on;
+                c.fillStyle = P.accent; roundRect(c, bx + 1, by + 1, s - 2, s - 2, rr); c.fill();
+            }
+            if (mk > 0.01) {
+                c.globalAlpha = base * mk;
+                c.strokeStyle = P.dim2; c.lineWidth = s * 0.1; c.lineCap = 'round';
+                c.beginPath();
+                if (st.indeterminate) {
+                    c.moveTo(bx + s * 0.28, by + s * 0.5); c.lineTo(bx + s * 0.72, by + s * 0.5);
+                } else {
+                    c.moveTo(bx + s * 0.26, by + s * 0.52);
+                    c.lineTo(bx + s * 0.44, by + s * 0.70);
+                    c.lineTo(bx + s * 0.76, by + s * 0.32);
+                }
+                c.stroke(); c.lineCap = 'butt';
+            }
+            c.globalAlpha = 1;
+            if (st.focused) fr(c, st.w, st.h, rr);
+        },
+    };
+}
+export const CheckboxGroupSkin = CheckboxSkin;
+
+/** Select skin (E1b, decisions/0009) -- the closed/expanded TRIGGER of a
+ *  lite-headless select (the item-6 dropdown resolution). A rounded field with a
+ *  chevron that flips on aria-expanded and a dot when a value is selected (handle
+ *  value() fast path). The portaled listbox is NOT painted -- the single-host
+ *  adapter places one overlay over the trigger box; the open-state popup is the
+ *  recorded follow-on (decisions/0009). Zero per-frame alloc. */
+export function SelectSkin(o = {}) {
+    const P = resolveTheme(o, { accent: '#a78bfa', dim: '#3a3a4a', dim2: '#e2e2f0' });
+    let op = 0;   // eased open
+    return {
+        headless: {
+            attrs: ['aria-expanded', 'data-disabled', 'aria-disabled'],
+            read(host, handle, st) {
+                st.toggled = _ariaTrue(host, 'aria-expanded');
+                st.disabled = _skinBool(host, 'data-disabled') || _ariaTrue(host, 'aria-disabled');
+                st.complete = !!(handle && typeof handle.value === 'function' && handle.value() != null);
+            },
+        },
+        tick(c, dt, now, st) {
+            const w = st.w, h = st.h, rr = h * 0.28;
+            const k = dt * 12; op += ((st.toggled ? 1 : 0) - op) * (k > 1 ? 1 : k);
+            const base = st.disabled ? 0.4 : 1;
+            c.globalAlpha = base;
+            c.strokeStyle = st.toggled ? P.accent : P.dim; c.lineWidth = 2;
+            roundRect(c, 1, 1, w - 2, h - 2, rr); c.stroke();
+            if (op > 0.01) {
+                c.globalAlpha = base * 0.12 * op;
+                c.fillStyle = P.accent; roundRect(c, 1, 1, w - 2, h - 2, rr); c.fill();
+                c.globalAlpha = base;
+            }
+            if (st.complete) {
+                c.fillStyle = P.accent;
+                c.beginPath(); c.arc(h * 0.5, h * 0.5, h * 0.14, 0, PI2); c.fill();
+            }
+            const cx = w - h * 0.5, cy = h * 0.5, s = h * 0.16, dir = 1 - 2 * op;
+            c.strokeStyle = P.dim2; c.lineWidth = 2; c.lineCap = 'round';
+            c.beginPath();
+            c.moveTo(cx - s, cy - s * 0.5 * dir); c.lineTo(cx, cy + s * 0.5 * dir); c.lineTo(cx + s, cy - s * 0.5 * dir);
+            c.stroke(); c.lineCap = 'butt';
+            c.globalAlpha = 1;
+            if (st.focused) fr(c, w, h, rr);
+        },
+    };
+}
+
+/** Meter skin (E1b) -- a horizontal gauge from aria-valuenow/min/max, zone-tinted
+ *  from data-zone (optimum|sub-optimum|low). Zero per-frame alloc. */
+export function MeterSkin(o = {}) {
+    const P = resolveTheme(o, { accent: '#6ee7b6', accent2: '#fbbf24', dim: '#9999b8', dim2: '#f87171' });
+    let dv = 0;
+    return {
+        headless: {
+            attrs: ['aria-valuenow', 'aria-valuemin', 'aria-valuemax', 'data-zone', 'data-disabled'],
+            read(host, handle, st) {
+                const mn = _skinNum(host, 'aria-valuemin', 0);
+                const mx = _skinNum(host, 'aria-valuemax', 100);
+                const nw = _skinNum(host, 'aria-valuenow', mn);
+                const span = mx - mn;
+                let v = span > 0 ? (nw - mn) / span : 0;
+                st.val = v < 0 ? 0 : (v > 1 ? 1 : v);
+                const zone = host.getAttribute('data-zone');
+                st.complete = zone === 'optimum';
+                st.error = zone === 'low';
+                st.disabled = _skinBool(host, 'data-disabled');
+            },
+        },
+        tick(c, dt, now, st) {
+            const w = st.w, cy = st.h / 2, bh = st.h < 12 ? st.h : 12;
+            const k = dt * 8; dv += (st.val - dv) * (k > 1 ? 1 : k);
+            const col = st.error ? P.dim2 : (st.complete ? P.accent : P.accent2);
+            c.globalAlpha = st.disabled ? 0.2 : 0.25;
+            c.fillStyle = P.dim; roundRect(c, 0, cy - bh / 2, w, bh, bh / 2); c.fill();
+            c.globalAlpha = st.disabled ? 0.4 : 1;
+            const fx = dv * w;
+            c.fillStyle = col; roundRect(c, 0, cy - bh / 2, fx > 0 ? fx : 0, bh, bh / 2); c.fill();
+            c.globalAlpha = 1;
+            if (st.focused) fr(c, w, st.h, bh / 2);
+        },
+    };
+}
+
+/** Steps skin (E1b) -- a rail of N nodes filled up to data-current-index (count
+ *  from data-step-count), the current node on the leading edge; data-complete
+ *  fills all. count/val slots reused (val carries the raw current index). Fixed
+ *  loop bounded to 12, zero per-frame alloc. */
+export function StepsSkin(o = {}) {
+    const P = resolveTheme(o, { accent: '#a78bfa', dim: '#3a3a4a', dim2: '#e2e2f0' });
+    let dv = 0;   // eased current index
+    return {
+        headless: {
+            attrs: ['data-step-count', 'data-current-index', 'data-complete', 'data-disabled'],
+            read(host, handle, st) {
+                let n = _skinNum(host, 'data-step-count', 3) | 0;
+                st.count = n < 2 ? 2 : (n > 12 ? 12 : n);
+                st.val = _skinNum(host, 'data-current-index', 0);   // raw current index (0-based)
+                st.complete = _skinBool(host, 'data-complete');
+                st.disabled = _skinBool(host, 'data-disabled');
+            },
+        },
+        tick(c, dt, now, st) {
+            const n = st.count > 1 ? st.count : 3;
+            const cur = st.complete ? n - 1 : (st.val < 0 ? 0 : st.val);
+            const k = dt * 10; dv += (cur - dv) * (k > 1 ? 1 : k);
+            const cy = st.h / 2, gap = st.w / n, rad = (st.h < gap ? st.h : gap) * 0.22;
+            const base = st.disabled ? 0.4 : 1;
+            const x0 = gap * 0.5, xN = gap * (n - 0.5);
+            c.globalAlpha = base * 0.25; c.strokeStyle = P.dim; c.lineWidth = 3;
+            c.beginPath(); c.moveTo(x0, cy); c.lineTo(xN, cy); c.stroke();
+            c.globalAlpha = base; c.strokeStyle = P.accent;
+            const fx = x0 + gap * dv;
+            c.beginPath(); c.moveTo(x0, cy); c.lineTo(fx > xN ? xN : (fx < x0 ? x0 : fx), cy); c.stroke();
+            for (let i = 0; i < n; i++) {
+                const cx = gap * (i + 0.5);
+                c.globalAlpha = base; c.fillStyle = (i <= dv + 0.001) ? P.accent : P.dim;
+                c.beginPath(); c.arc(cx, cy, rad, 0, PI2); c.fill();
+            }
+            c.globalAlpha = 1;
+            if (st.focused) fr(c, st.w, st.h, rad);
+        },
+    };
+}
+
+/** Accordion skin (E1b) -- a header chevron that flips on aria-expanded /
+ *  data-open plus an underline hint that grows with open. Single trigger host,
+ *  zero per-frame alloc. */
+export function AccordionSkin(o = {}) {
+    const P = resolveTheme(o, { accent: '#38bdf8', dim: '#3a3a4a', dim2: '#e2e2f0' });
+    let op = 0;
+    return {
+        headless: {
+            attrs: ['aria-expanded', 'data-open', 'data-disabled', 'aria-disabled'],
+            read(host, handle, st) {
+                st.toggled = _ariaTrue(host, 'aria-expanded') || _skinBool(host, 'data-open');
+                st.disabled = _skinBool(host, 'data-disabled') || _ariaTrue(host, 'aria-disabled');
+            },
+        },
+        tick(c, dt, now, st) {
+            const w = st.w, h = st.h;
+            const k = dt * 12; op += ((st.toggled ? 1 : 0) - op) * (k > 1 ? 1 : k);
+            const base = st.disabled ? 0.4 : 1;
+            const cx = w - h * 0.5, cy = h * 0.5, s = h * 0.16, dir = 1 - 2 * op;
+            c.globalAlpha = base;
+            c.strokeStyle = st.toggled ? P.accent : P.dim2; c.lineWidth = 2; c.lineCap = 'round';
+            c.beginPath();
+            c.moveTo(cx - s, cy - s * 0.5 * dir); c.lineTo(cx, cy + s * 0.5 * dir); c.lineTo(cx + s, cy - s * 0.5 * dir);
+            c.stroke(); c.lineCap = 'butt';
+            c.globalAlpha = base * 0.5;
+            c.strokeStyle = P.accent; c.lineWidth = 2;
+            const uw = (w - h) * op;
+            c.beginPath(); c.moveTo(2, h - 3); c.lineTo(2 + (uw > 0 ? uw : 0), h - 3); c.stroke();
+            c.globalAlpha = 1;
+            if (st.focused) fr(c, w, h, 4);
+        },
+    };
+}
+
+/** Skeleton skin (E1b) -- a shimmer sweep over a rounded placeholder while
+ *  data-loading / aria-busy; fades out when ready. Zero per-frame alloc: a moving
+ *  highlight band via globalAlpha, never a per-frame gradient. */
+export function SkeletonSkin(o = {}) {
+    const P = resolveTheme(o, { accent: '#e2e2f0', dim: '#3a3a4a' });
+    let ph = 0;    // shimmer phase 0..1
+    let vis = 0;   // eased placeholder visibility (1 loading, 0 ready)
+    return {
+        headless: {
+            attrs: ['data-loading', 'aria-busy'],
+            read(host, handle, st) {
+                st.indeterminate = _skinBool(host, 'data-loading') || _ariaTrue(host, 'aria-busy');
+                st.complete = !st.indeterminate;
+            },
+        },
+        tick(c, dt, now, st) {
+            const w = st.w, h = st.h, rr = (h < 10 ? h : 10) * 0.5;
+            const loading = st.indeterminate;
+            const k = dt * 6; vis += ((loading ? 1 : 0) - vis) * (k > 1 ? 1 : k);
+            if (vis < 0.01) { c.globalAlpha = 1; return; }
+            if (loading) { ph += dt * 0.8; if (ph > 1) ph -= 1; }
+            c.globalAlpha = vis * 0.5;
+            c.fillStyle = P.dim; roundRect(c, 0, 0, w, h, rr); c.fill();
+            const bw = w * 0.28, bx = -bw + ph * (w + bw);
+            const bx0 = bx < 0 ? 0 : bx, bx1 = bx + bw > w ? w : bx + bw;
+            if (bx1 > bx0) {
+                c.globalAlpha = vis * 0.18;
+                c.fillStyle = P.accent; roundRect(c, bx0, 0, bx1 - bx0, h, rr); c.fill();
+            }
+            c.globalAlpha = 1;
+        },
+    };
+}
+
 /**
  * The headless-skin registry -- a SIBLING of RECIPES, not part of it (decisions/
  * 0008 decision 4). id -> factory (null-prototype), the meta rows a picker/demo
@@ -3632,6 +3877,13 @@ export const HEADLESS_SKINS = Object.assign(Object.create(null), {
     sliderSkin: SliderSkin,
     progressSkin: ProgressSkin,
     ratingSkin: RatingSkin,
+    checkboxSkin: CheckboxSkin,
+    checkboxGroupSkin: CheckboxGroupSkin,
+    selectSkin: SelectSkin,
+    meterSkin: MeterSkin,
+    stepsSkin: StepsSkin,
+    accordionSkin: AccordionSkin,
+    skeletonSkin: SkeletonSkin,
 });
 
 export const SKIN_META = [
@@ -3639,6 +3891,13 @@ export const SKIN_META = [
     { id: 'sliderSkin', name: 'Slider Skin', primitive: 'slider', themeable: true, motionSafe: false },
     { id: 'progressSkin', name: 'Progress Skin', primitive: 'progress', themeable: true, motionSafe: false },
     { id: 'ratingSkin', name: 'Rating Skin', primitive: 'rating', themeable: true, motionSafe: false },
+    { id: 'checkboxSkin', name: 'Checkbox Skin', primitive: 'checkbox', themeable: true, motionSafe: false },
+    { id: 'checkboxGroupSkin', name: 'Checkbox Group Skin', primitive: 'checkbox-group', themeable: true, motionSafe: false },
+    { id: 'selectSkin', name: 'Select Skin', primitive: 'select', themeable: true, motionSafe: false },
+    { id: 'meterSkin', name: 'Meter Skin', primitive: 'meter', themeable: true, motionSafe: false },
+    { id: 'stepsSkin', name: 'Steps Skin', primitive: 'steps', themeable: true, motionSafe: false },
+    { id: 'accordionSkin', name: 'Accordion Skin', primitive: 'accordion', themeable: true, motionSafe: false },
+    { id: 'skeletonSkin', name: 'Skeleton Skin', primitive: 'skeleton', themeable: true, motionSafe: false },
 ];
 
 export const SKIN_NAMES = Object.freeze(Object.keys(HEADLESS_SKINS));

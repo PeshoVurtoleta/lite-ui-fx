@@ -22,7 +22,7 @@ import { Ticker } from '@zakkster/lite-ticker';
 
 // Three-place version sync: this constant, package.json "version", and the
 // VERSION line in llms.txt must always match. /release keeps them locked.
-export const VERSION = '1.10.0';
+export const VERSION = '1.11.0';
 
 // ---------------------------------------------------------
 //  SHARED TICKER (ref-counted, one RAF for all UI components)

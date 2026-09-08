@@ -348,6 +348,13 @@ export declare function SwitchSkin(options?: RecipeOptions): HeadlessSkinRecipe;
 export declare function SliderSkin(options?: RecipeOptions): HeadlessSkinRecipe;
 export declare function ProgressSkin(options?: RecipeOptions): HeadlessSkinRecipe;
 export declare function RatingSkin(options?: RecipeOptions): HeadlessSkinRecipe;
+export declare function CheckboxSkin(options?: RecipeOptions): HeadlessSkinRecipe;
+export declare function CheckboxGroupSkin(options?: RecipeOptions): HeadlessSkinRecipe;
+export declare function SelectSkin(options?: RecipeOptions): HeadlessSkinRecipe;
+export declare function MeterSkin(options?: RecipeOptions): HeadlessSkinRecipe;
+export declare function StepsSkin(options?: RecipeOptions): HeadlessSkinRecipe;
+export declare function AccordionSkin(options?: RecipeOptions): HeadlessSkinRecipe;
+export declare function SkeletonSkin(options?: RecipeOptions): HeadlessSkinRecipe;
 
 /** A headless-skin meta row. `primitive` names the lite-headless primitive the
  *  skin is designed to paint. */
