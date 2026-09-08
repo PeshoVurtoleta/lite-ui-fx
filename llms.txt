@@ -1,7 +1,7 @@
 # @zakkster/lite-ui-fx
 > Canvas-hijacked UI components with pluggable recipe system. 57 built-in recipes.
 
-VERSION 1.9.1
+VERSION 1.10.0
 
 ## Install
 npm i @zakkster/lite-ui-fx
@@ -86,6 +86,34 @@ driven    // U5 host clock: boolean; true = no ticker/RAF, the host calls instan
 // step count), index(integer initial selection, default 0), label, width, height,
 // padding, disabled, seed, colors, theme, text, font, ticker, driven. The hijack-
 // only keys (value/checked/knobMode/announce) throw -- a group uses index, not value.
+
+## Mount -- HEADLESS SKIN mode (E1): paint a lite-headless primitive
+// skinHeadless: a FOURTH mount adapter. It places a canvas over a @zakkster/lite-
+// headless primitive and drives a recipe from the primitive's PAINTED state
+// attributes (its docs/CSS_CONTRACT.md) -- lite-ui-fx paints, lite-headless behaves.
+// Arm's-length: couples through the attribute contract, NEVER an import, so
+// lite-headless is never a dependency. Structurally a decoration: host byte-
+// identical, one overlay canvas + one MutationObserver removed on destroy; the
+// lite-headless handle is never destroyed (the caller owns it).
+import { skinHeadless, SwitchSkin, SliderSkin, ProgressSkin, RatingSkin } from '@zakkster/lite-ui-fx/headless';
+import { HEADLESS_SKINS, SKIN_META, SKIN_NAMES } from '@zakkster/lite-ui-fx/headless';
+const skin = skinHeadless(handle, SwitchSkin, { host: switchThumbEl, theme });
+skin.el          // the skinned host (unchanged)
+skin.canvas      // the overlay (the only DOM node added)
+skin.state       // read-only; driven by the observer from painted attrs
+skin.tick(dtMs)  // driven mode only
+skin.destroy()   // remove overlay + observer + listeners; host + handle untouched
+// A skin is an ordinary recipe PLUS a descriptor: recipe.headless = { attrs:string[],
+//   read(host, handle, state) }. skinHeadless observes `attrs` and calls read() at
+//   EVENT time (never per frame) to parse painted state into preallocated slots.
+// options: { host(REQUIRED), padding, seed, colors, theme, text, font, ticker, driven };
+//   hijack-only keys throw. setValue/setChecked throw (a skin reflects the primitive).
+// E1 skins (SKIN_META, a registry SEPARATE from RECIPES -- the 57-recipe count is
+//   unchanged): SwitchSkin (data-checked/aria-checked), SliderSkin (aria-valuenow/
+//   min/max + data-dragging), ProgressSkin (aria-valuenow/max + data-complete/
+//   data-loading), RatingSkin (aria-valuenow/max over N items). Each themeable, born
+//   zero-alloc + t6-gated. A painted attr is truthy when PRESENT with any value but
+//   "false" (handles boolean data-disabled and value data-checked="true").
 
 ## Host clock (U5) -- three mutually-exclusive modes, both mount modes
 // default (neither option): the shared ref-counted ticker -- one RAF for all
@@ -187,9 +215,9 @@ See UIFX-RECIPE-GUIDE.md (included in package).
 - Zero-GC in all built-in recipes: const colors + globalAlpha, precomputed
   color/label LUTs, fixed preallocated particle pools, gradients built in init.
   Gated per recipe by the t3-frame-alloc torture tier (default AND themed mount).
-- Themeable: all 56 recipes honour { colors, theme:{light,mid,dark}, text, font },
+- Themeable: all 57 recipes honour { colors, theme:{light,mid,dark}, text, font },
   resolved once in init (zero per-frame alloc). RECIPE_META.themeable is true for
-  all 56. A bare mount is byte-identical to pre-theming. Shipped palettes + APCA
+  all 57. A bare mount is byte-identical to pre-theming. Shipped palettes + APCA
   contrast are authored with @zakkster/lite-hueforge (a dev-only tool, never a
   runtime dependency).
 - U5 host clock: mount { ticker } to ride a caller-supplied lite-ticker (destroy
@@ -218,3 +246,11 @@ See UIFX-RECIPE-GUIDE.md (included in package).
   selects programmatically (fires onSelect once, no focus steal). Additive: the
   single-element API is byte-identical; the four vol.3 fakes (PillTabs/Stepper/
   RadioOrbit/BubbleRating) re-home to real group types, SegmentedSlide is new.
+- E1 headless skins (./headless subpath, skinHeadless): a FOURTH mount adapter that
+  paints a @zakkster/lite-headless primitive by OBSERVING its painted state
+  attributes (one MutationObserver; parsed at event time, never per frame) --
+  lite-ui-fx paints, lite-headless behaves. lite-headless is a compose-target, NEVER
+  a dependency (the package imports it nowhere). 4 skins (switch/slider/progress/
+  rating) live in a registry (HEADLESS_SKINS/SKIN_META) SEPARATE from the 57 recipes;
+  each themeable + zero per-frame alloc (t6-gated). setValue/setChecked throw (a skin
+  reflects the primitive); destroy leaves the host + handle untouched. See 0008.

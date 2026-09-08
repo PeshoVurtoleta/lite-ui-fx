@@ -22,7 +22,7 @@ import { Ticker } from '@zakkster/lite-ticker';
 
 // Three-place version sync: this constant, package.json "version", and the
 // VERSION line in llms.txt must always match. /release keeps them locked.
-export const VERSION = '1.9.1';
+export const VERSION = '1.10.0';
 
 // ---------------------------------------------------------
 //  SHARED TICKER (ref-counted, one RAF for all UI components)
@@ -124,6 +124,10 @@ const KNOB_MODES = ['rotate', 'vertical'];
 // ARE valid in decorate mode: a decoration wants host-clock control every bit as
 // much as a hijack does. Cold: read only at mount.
 const DECORATE_OPTIONS = ['padding', 'seed', 'colors', 'theme', 'text', 'font', 'ticker', 'driven'];
+// skinHeadless (E1, decisions/0008) takes the decorate subset PLUS `host` -- the
+// element the lite-headless primitive paints its state attributes on (REQUIRED; the
+// overlay + MutationObserver target). The hijack-only keys throw, same as decorate.
+const HEADLESS_OPTIONS = ['host', 'padding', 'seed', 'colors', 'theme', 'text', 'font', 'ticker', 'driven'];
 
 // Levenshtein edit distance. Cold: only reached on the error path.
 function _editDistance(a, b) {
@@ -1203,6 +1207,382 @@ export function decorateUIFX(el, recipeFactory, options = {}) {
         // (init did not succeed). Re-throw the ORIGINAL error, unwrapped.
         if (removeTick) removeTick();          // shared OR caller ticker -- both must unwind
         if (tickerAcquired) releaseTicker();   // release ONLY the shared ticker we acquired
+        if (acCreated) ac.abort();
+        if (canvasAppended) canvas.remove();
+        throw err;
+    }
+}
+
+// =========================================================
+//  skinHeadless -- paint a lite-headless primitive (decisions/0008, E1)
+// =========================================================
+
+/**
+ * Skin a @zakkster/lite-headless primitive: place a canvas over the element the
+ * primitive paints on and drive a recipe from the primitive's PAINTED state
+ * attributes -- lite-ui-fx paints, lite-headless behaves. Arm's-length: it
+ * couples through the attribute contract (docs/CSS_CONTRACT.md), NOT an import, so
+ * lite-headless is never a dependency. Structurally a decoration (0004): no native
+ * element, host never reparented/restyled, one overlay canvas + its listeners + one
+ * MutationObserver; on destroy the host is byte-identical and the handle untouched.
+ *
+ * The recipe MUST be a headless-skin recipe: it carries
+ *   recipe.headless = { attrs: string[], read(host, handle, state) }
+ * where `attrs` is the MutationObserver attributeFilter and `read` parses the
+ * painted attributes into preallocated `state` slots (val/toggled/disabled/...),
+ * called once at init and on every mutation -- EVENT time, never per frame.
+ *
+ * @param {Object}   handle         The lite-headless primitive handle (duck-typed;
+ *                                  passed to read() for an optional signal fast path;
+ *                                  NEVER destroyed here). May be null.
+ * @param {Function} recipeFactory  (options) => Recipe with a `headless` descriptor.
+ * @param {Object}   options        { host: Element (REQUIRED), padding=40, seed,
+ *                                  colors, theme, text, font, ticker, driven }.
+ * @returns {{ el, canvas, state, tick, setValue, setChecked, destroy }}
+ */
+export function skinHeadless(handle, recipeFactory, options = {}) {
+    // =====================================================================
+    //  PHASE 1 -- VALIDATION ONLY (fail closed; mirrors decorateUIFX). No
+    //  createElement, no observer, no ticker acquire, no recipe.init until
+    //  every check below has passed.
+    // =====================================================================
+
+    // 1. handle: duck-typed. It is optional context for read()'s fast path and is
+    //    never destroyed by skinHeadless. Only a non-nullish non-object is a
+    //    mistake (a primitive handle is an object).
+    if (handle !== null && handle !== undefined && typeof handle !== 'object') {
+        throw new Error('skinHeadless: handle must be a lite-headless primitive handle (an object) or null');
+    }
+
+    // 2. options: the decorate subset + `host`. Unknown key -> did-you-mean; a
+    //    hijack-only key -> a clear "not valid in skin mode". Both fail closed.
+    for (const k in options) {
+        if (!Object.prototype.hasOwnProperty.call(options, k)) continue;
+        if (HEADLESS_OPTIONS.indexOf(k) === -1) {
+            if (KNOWN_OPTIONS.indexOf(k) !== -1) {
+                throw new Error('skinHeadless: option "' + k + '" is not valid in skin mode (hijack-only)');
+            }
+            throw new Error(_didYouMean('skinHeadless: unknown option', k, HEADLESS_OPTIONS));
+        }
+    }
+
+    // 3. host: a live, attached DOM element -- the overlay is a sibling of it and
+    //    the observer watches it. A detached host has no parentNode to host the
+    //    canvas: an Error, never a silent no-op (mirrors decorate's el checks).
+    const host = options.host;
+    if (!host || typeof host.getBoundingClientRect !== 'function' ||
+        typeof host.setAttribute !== 'function') {
+        throw new Error('skinHeadless: options.host must be a DOM element (the element the primitive paints on)');
+    }
+    if (!host.parentNode || typeof host.parentNode.insertBefore !== 'function') {
+        throw new Error('skinHeadless: options.host must be attached to the DOM (no parentNode to host the overlay)');
+    }
+
+    const padding = options.padding === undefined ? 40 : options.padding;
+
+    // Theming options (decisions/0002): validated fail closed, forwarded to the
+    // recipe factory which resolves them in init. Cold mount code.
+    const _theme = options.theme;
+    if (_theme !== undefined) {
+        if (_theme === null || typeof _theme !== 'object' ||
+            typeof _theme.light !== 'string' || typeof _theme.mid !== 'string' ||
+            typeof _theme.dark !== 'string' || Object.keys(_theme).length !== 3) {
+            throw new Error('skinHeadless: option "theme" must be { light, mid, dark } of color strings');
+        }
+    }
+    const _colors = options.colors;
+    if (_colors !== undefined &&
+        (!Array.isArray(_colors) || _colors.some((c) => typeof c !== 'string'))) {
+        throw new Error('skinHeadless: option "colors" must be an array of color strings');
+    }
+    if (options.text !== undefined && typeof options.text !== 'string') {
+        throw new Error('skinHeadless: option "text" must be a string');
+    }
+    if (options.font !== undefined && typeof options.font !== 'string') {
+        throw new Error('skinHeadless: option "font" must be a string');
+    }
+    if (options.seed !== undefined &&
+        (typeof options.seed !== 'number' || !Number.isFinite(options.seed))) {
+        throw new Error('skinHeadless: option "seed" must be a finite number');
+    }
+
+    // Host clock (U5, decisions/0005) -- same three modes as decorate.
+    const callerTicker = options.ticker;
+    if (options.driven !== undefined && typeof options.driven !== 'boolean') {
+        throw new Error('skinHeadless: option "driven" must be a boolean');
+    }
+    const driven = options.driven === true;
+    if (callerTicker !== undefined) {
+        if (driven) {
+            throw new Error('skinHeadless: options "ticker" and "driven" are mutually exclusive');
+        }
+        if (!callerTicker || typeof callerTicker.add !== 'function') {
+            throw new Error('skinHeadless: option "ticker" must be a ticker with an .add(fn) method');
+        }
+    }
+
+    // 4. recipeFactory + recipe object + hooks (same 8-hook contract as decorate).
+    if (typeof recipeFactory !== 'function') {
+        throw new Error('skinHeadless: recipeFactory must be a function');
+    }
+    const recipe = recipeFactory(options);
+    if (!recipe || typeof recipe !== 'object') {
+        throw new Error('skinHeadless: recipe must be an object');
+    }
+    if (typeof recipe.tick !== 'function') {
+        throw new Error('skinHeadless: recipe.tick must be a function');
+    }
+    for (const k in recipe) {
+        if (!Object.prototype.hasOwnProperty.call(recipe, k)) continue;
+        if (typeof recipe[k] === 'function' && KNOWN_HOOKS.indexOf(k) === -1) {
+            throw new Error(_didYouMean('skinHeadless: unknown recipe hook', k, KNOWN_HOOKS));
+        }
+    }
+
+    // 5. The headless descriptor -- what makes a recipe skinnable. A plain recipe
+    //    has no attribute->state mapping, so skinning it is a category error caught
+    //    here (fail closed), not a silent no-paint later.
+    const hspec = recipe.headless;
+    if (!hspec || typeof hspec !== 'object' || !Array.isArray(hspec.attrs) ||
+        hspec.attrs.length === 0 || hspec.attrs.some((a) => typeof a !== 'string') ||
+        typeof hspec.read !== 'function') {
+        throw new Error('skinHeadless: recipe must be a headless-skin recipe with recipe.headless = { attrs: string[], read(host, handle, state) } -- a plain recipe cannot be skinned (use mountUIFX or decorateUIFX)');
+    }
+
+    // =====================================================================
+    //  PHASE 2 -- SIDE EFFECTS (fail-closed unwind, mirrors decorate). The
+    //  acquisitions are the overlay canvas, the MutationObserver, the
+    //  AbortController, and the shared ticker -- unwound in reverse on a throw.
+    // =====================================================================
+    let canvasAppended = false;
+    let moConnected = false;
+    let acCreated = false;
+    let tickerAcquired = false;
+    let canvas = null;
+    let ac = null;
+    let mo = null;
+    let removeTick = null;
+
+    try {
+    // -- Placement from host's OFFSET box (0004 decision 2): the overlay is a
+    //    SIBLING of host, sharing its offsetParent, so it lands over host without
+    //    writing any style onto the parent. Read once, refreshed on resize only. --
+    let ow = host.offsetWidth;
+    let oh = host.offsetHeight;
+    let dpr = window.devicePixelRatio || 1;
+    let cw = ow + padding * 2;
+    let ch = oh + padding * 2;
+
+    canvas = document.createElement('canvas');
+    canvas.width = cw * dpr;
+    canvas.height = ch * dpr;
+    Object.assign(canvas.style, {
+        position: 'absolute',
+        left: (host.offsetLeft - padding) + 'px',
+        top: (host.offsetTop - padding) + 'px',
+        width: cw + 'px', height: ch + 'px',
+        pointerEvents: 'none',
+    });
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    host.parentNode.insertBefore(canvas, host.nextSibling);
+    canvasAppended = true;
+
+    const rmq = _reducedMotionQuery();
+
+    // -- State. A superset of the scalar fields a skin reads; read() (below) writes
+    //    the primitive's painted state into these preallocated slots. --
+    const state = {
+        hover: false,
+        active: false,
+        focused: (typeof document !== 'undefined' && document.activeElement === host),
+        val: 0,               // slider/progress/rating fill 0..1
+        toggled: false,       // switch on/off
+        indeterminate: false, // progress loading / mixed
+        disabled: false,
+        complete: false,      // progress done
+        error: false,
+        count: 0,             // rating item count (read from the primitive)
+        reducedMotion: rmq ? !!rmq.matches : false,
+        budget: 1,
+        w: ow, h: oh, padding, dpr,
+    };
+    const pointer = { x: -999, y: -999, vx: 0, vy: 0 };
+    let rect = null;
+
+    // -- Initialize recipe (validated in phase 1). ctx exists now. --
+    if (recipe.init) recipe.init(ctx, ow, oh, padding);
+
+    // -- Seed state from the primitive's CURRENT painted attributes, before the
+    //    first frame (law: hook initial values). read() is the skin's own parse. --
+    hspec.read(host, handle, state);
+
+    // -- Events (via AbortController, exactly what destroy() removes). --
+    ac = new AbortController();
+    acCreated = true;
+    const signal = ac.signal;
+
+    function updatePointer(e) {
+        if (!rect) rect = host.getBoundingClientRect();
+        const nx = e.clientX - rect.left;
+        const ny = e.clientY - rect.top;
+        pointer.vx = nx - pointer.x;
+        pointer.vy = ny - pointer.y;
+        pointer.x = nx;
+        pointer.y = ny;
+    }
+    function refreshRect() { rect = host.getBoundingClientRect(); }
+    // Reposition the overlay from the offset box after a layout change (cold path).
+    // Layout READS are hoisted above the style WRITES (forced-reflow law): a skin
+    // sits over live DOM, the one place this package can force layout.
+    function reposition() {
+        const nw = host.offsetWidth;
+        const nh = host.offsetHeight;
+        const ol = host.offsetLeft;
+        const ot = host.offsetTop;
+        canvas.style.left = (ol - padding) + 'px';
+        canvas.style.top = (ot - padding) + 'px';
+        if (nw !== ow || nh !== oh) {
+            ow = nw; oh = nh;
+            cw = ow + padding * 2;
+            ch = oh + padding * 2;
+            canvas.width = cw * dpr;
+            canvas.height = ch * dpr;
+            canvas.style.width = cw + 'px';
+            canvas.style.height = ch + 'px';
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            state.w = ow; state.h = oh;
+        }
+    }
+
+    window.addEventListener('scroll', refreshRect, { passive: true, signal });
+    window.addEventListener('resize', () => { reposition(); refreshRect(); }, { passive: true, signal });
+
+    // Pointer/hover state from the host's own events (a skin may light up on
+    // hover/press). onToggle/onDrag are NOT fired -- the primitive owns value.
+    host.addEventListener('pointermove', updatePointer, { signal });
+    host.addEventListener('pointerenter', (e) => {
+        state.hover = true;
+        refreshRect();
+        updatePointer(e);
+        if (recipe.onHover) recipe.onHover(state, pointer);
+    }, { signal });
+    host.addEventListener('pointerleave', () => {
+        state.hover = false;
+        if (recipe.onLeave) recipe.onLeave(state, pointer);
+    }, { signal });
+    host.addEventListener('pointerdown', (e) => {
+        state.active = true;
+        updatePointer(e);
+        if (recipe.onClick) recipe.onClick(pointer.x, pointer.y, state);
+    }, { signal });
+    host.addEventListener('pointerup', () => { state.active = false; }, { signal });
+    host.addEventListener('focus', () => { state.focused = true; }, { signal });
+    host.addEventListener('blur', () => { state.focused = false; }, { signal });
+
+    // -- THE STATE SOURCE (decisions/0008): one MutationObserver over the painted
+    //    attributes the skin declared; read() parses them into `state` at EVENT
+    //    time. Idempotent + full re-read, so it is order/timing-independent. --
+    mo = new MutationObserver(() => { hspec.read(host, handle, state); });
+    mo.observe(host, { attributes: true, attributeFilter: hspec.attrs, subtree: true });
+    moConnected = true;
+
+    // -- DPR re-read on display change (cold; absent matchMedia is a silent no-op). --
+    if (typeof window.matchMedia === 'function') {
+        const mq = window.matchMedia('(resolution: ' + dpr + 'dppx)');
+        mq.addEventListener('change', () => {
+            const nd = window.devicePixelRatio || 1;
+            dpr = nd;
+            canvas.width = cw * nd;
+            canvas.height = ch * nd;
+            ctx.setTransform(nd, 0, 0, nd, 0, 0);
+            state.dpr = nd;
+        }, { signal });
+    }
+    if (rmq) {
+        rmq.addEventListener('change', () => { state.reducedMotion = !!rmq.matches; }, { signal });
+    }
+
+    // -- Render loop. ONE named frame body; three clock modes; quarantine on throw
+    //    (identical to decorate). --
+    let destroyed = false;
+    let quarantined = false;
+
+    function frame(dtMs) {
+        if (destroyed || quarantined) return;
+        const dt = dtMs / 1000;
+        const now = performance.now();
+
+        if (dt > 0) {
+            let inst = _TARGET_DT / dt;
+            if (inst > 1) inst = 1; else if (inst < 0) inst = 0;
+            state.budget += (inst - state.budget) * _BUDGET_SMOOTH;
+        }
+
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, cw, ch);
+        ctx.save();
+        ctx.translate(padding, padding);  // Origin = the host element's top-left
+        try {
+            recipe.tick(ctx, dt, now, state, pointer);
+        } catch (err) {
+            quarantined = true;
+            console.error('skinHeadless: recipe.tick threw; skin quarantined', err);
+            ctx.restore();
+            ctx.clearRect(0, 0, cw, ch);
+            return;
+        }
+        ctx.restore();
+    }
+
+    if (driven) {
+        // no ticker acquired; removeTick stays null
+    } else if (callerTicker !== undefined) {
+        removeTick = callerTicker.add(frame);
+    } else {
+        const ticker = acquireTicker();
+        tickerAcquired = true;
+        removeTick = ticker.add(frame);
+    }
+
+    // -- Public API --
+    return {
+        /** The skinned host element (unchanged; provided for external reads). */
+        el: host,
+        /** The overlay canvas (for external styling). */
+        canvas,
+        /** Current state (read-only reference). */
+        state,
+        /** Drive one frame by hand (U5); callable ONLY in { driven: true }. */
+        tick: driven ? frame : _drivenOnly,
+        /** Hijack-only: a skin reflects the primitive, it does not drive it. */
+        setValue() {
+            throw new Error('skinHeadless: setValue is hijack-only; a skin reflects the primitive, drive the lite-headless handle instead');
+        },
+        setChecked() {
+            throw new Error('skinHeadless: setChecked is hijack-only; a skin reflects the primitive, drive the lite-headless handle instead');
+        },
+        /** Destroy: remove the overlay + observer + every listener the skin added.
+         *  Idempotent. The host AND the lite-headless handle are left untouched. */
+        destroy() {
+            if (destroyed) return;
+            destroyed = true;
+            ac.abort();
+            mo.disconnect();                      // stop observing painted attrs
+            if (removeTick) removeTick();         // shared OR caller ticker; null when driven
+            if (recipe.destroy) recipe.destroy();
+            if (tickerAcquired) releaseTicker();  // release ONLY the shared ticker we acquired
+            canvas.remove();                      // the ONLY DOM node skinHeadless added
+        },
+    };
+    } catch (err) {
+        // A phase-2 step threw (realistically recipe.init or read). Unwind ONLY what
+        // was acquired, reverse order, each flag-guarded. recipe.destroy is NOT
+        // called (init did not complete). Re-throw the ORIGINAL error.
+        if (removeTick) removeTick();
+        if (tickerAcquired) releaseTicker();
+        if (moConnected) mo.disconnect();
         if (acCreated) ac.abort();
         if (canvasAppended) canvas.remove();
         throw err;

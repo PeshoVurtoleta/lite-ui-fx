@@ -36,7 +36,7 @@ installDom();
 raf.install();
 
 const { mountUIFX, decorateUIFX, mountUIFXGroup, UIType, GroupType } = await import('../../UIFXController.js');
-const { RECIPES, RECIPE_META } = await import('../../UIFXRecipes.js');
+const { RECIPES, RECIPE_META, HEADLESS_SKINS, SKIN_META } = await import('../../UIFXRecipes.js');
 
 // U7 group types, derived once so the tiers dispatch a group meta.type to
 // mountUIFXGroup (the way 'decorate' routes to decorateUIFX).
@@ -167,6 +167,8 @@ export {
     mountUIFX, decorateUIFX, mountUIFXGroup, UIType, GroupType, GROUP_TYPES, groupItems,
     // recipes registry (drives the meta-driven t0/t1 sweep over all 57)
     RECIPES, RECIPE_META,
+    // headless-skin registry (E1): drives the t6 skin frame-alloc tier
+    HEADLESS_SKINS, SKIN_META,
     // signal
     createRoot, effect,
     // prng

@@ -5,6 +5,52 @@ All notable changes to `@zakkster/lite-ui-fx` are documented here.
 The format follows Keep a Changelog; this project adheres to Semantic
 Versioning.
 
+## [1.10.0] -- 2026-09-08
+
+Enrichment session E1: skinHeadless, a fourth mount adapter that paints a
+`@zakkster/lite-headless` primitive by observing the state attributes it paints.
+Additive -- the three existing mount modes and the 57-recipe registry are
+byte-identical.
+
+### Added
+
+- `skinHeadless(handle, recipeFactory, options)` -- a fourth mount adapter, exported
+  from `.` and from the new `./headless` subpath. It places an overlay canvas over
+  the element a `@zakkster/lite-headless` primitive paints on and drives a recipe from
+  that primitive's painted state attributes via one `MutationObserver`, parsed at
+  event time (never per frame). It couples through the painted-attribute contract
+  only: `@zakkster/lite-headless` is imported nowhere and is not a dependency.
+  Structurally a decoration -- no native element, host byte-identical, one overlay
+  canvas + one observer removed on `destroy()`, the primitive handle never destroyed.
+  `setValue`/`setChecked` throw. See decisions/0008.
+- The `./headless` subpath (`UIFXHeadless.js` + `UIFXHeadless.d.ts`) and four headless
+  skins: `SwitchSkin` (data-checked/aria-checked), `SliderSkin` (aria-valuenow/min/max
+  + data-dragging), `ProgressSkin` (aria-valuenow/max + data-complete/data-loading),
+  `RatingSkin` (aria-valuenow/max). They live in a registry (`HEADLESS_SKINS`,
+  `SKIN_META`, `SKIN_NAMES`) separate from `RECIPES`/`RECIPE_META`, so the 57-recipe
+  count is unchanged. Each resolves theme in init and allocates zero bytes per frame,
+  gated by a new torture tier (t6); the existing alloc baseline is unchanged.
+
+### Changed
+
+- `package.json` `description`: corrected the recipe count (was "50", now 57) and
+  named the three mount modes plus the headless-skin adapter.
+- `llms.txt` and `UIFXRecipes.d.ts`: corrected a stale recipe count ("56" -> 57 in the
+  themeable and default-namespace notes) left over from the U7 addition of the 57th
+  recipe. Shipped-doc accuracy only; no code path changed.
+
+### Fixed
+
+- ReactionPicker: paints a hairline ring around each disc and seeds the discs at
+  rest radius, so the row is visible on the first frame and where colour-emoji
+  glyphs do not render. Previously only the 4%-alpha discs and the emoji drew, so
+  an un-ticked or emoji-less environment showed an empty card. No added per-frame
+  allocation; the torture alloc baseline is unchanged.
+
+### Removed
+
+none
+
 ## [1.9.1] -- 2026-09-07
 
 Patch: a rendering fix for the ReactionPicker recipe.

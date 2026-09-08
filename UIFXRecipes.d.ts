@@ -1,10 +1,11 @@
 import type {
     UIFXRecipe, UIFXInstance, MountOptions,
     UIFXGroupRecipe, GroupOptions, UIFXGroupInstance, DecorateInstance,
+    HeadlessSkinRecipe,
 } from './UIFXController';
 
 // ===========================================================
-//  RECIPE OPTIONS + FACTORIES (all 56)
+//  RECIPE OPTIONS + FACTORIES (all 57)
 // ===========================================================
 
 /**
@@ -272,7 +273,7 @@ export declare function mountRecipe(
 ): UIFXInstance | UIFXGroupInstance | DecorateInstance;
 
 // ===========================================================
-//  DEFAULT EXPORT -- combined all-56 namespace
+//  DEFAULT EXPORT -- combined all-57 namespace
 // ===========================================================
 
 declare const UIFXAllRecipes: {
@@ -335,3 +336,30 @@ declare const UIFXAllRecipes: {
     SuccessBloom: typeof SuccessBloom;
 };
 export default UIFXAllRecipes;
+
+// ===========================================================
+//  HEADLESS SKINS (E1, decisions/0008)
+//  A sibling registry of RECIPES/RECIPE_META: skins are driven by skinHeadless
+//  (a handle + host), never by mountRecipe (a container), so they are kept
+//  separate and the 57-recipe count is unchanged.
+// ===========================================================
+
+export declare function SwitchSkin(options?: RecipeOptions): HeadlessSkinRecipe;
+export declare function SliderSkin(options?: RecipeOptions): HeadlessSkinRecipe;
+export declare function ProgressSkin(options?: RecipeOptions): HeadlessSkinRecipe;
+export declare function RatingSkin(options?: RecipeOptions): HeadlessSkinRecipe;
+
+/** A headless-skin meta row. `primitive` names the lite-headless primitive the
+ *  skin is designed to paint. */
+export interface SkinMeta {
+    id: string;
+    name: string;
+    primitive: string;
+    themeable: boolean;
+    motionSafe: boolean;
+}
+
+/** id -> skin factory (null-prototype). Driven by skinHeadless, never mountRecipe. */
+export declare const HEADLESS_SKINS: Record<string, (options?: RecipeOptions) => HeadlessSkinRecipe>;
+export declare const SKIN_META: SkinMeta[];
+export declare const SKIN_NAMES: readonly string[];

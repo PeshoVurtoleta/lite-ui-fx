@@ -2548,13 +2548,15 @@ export function DayNightToggle(o = {}) {
 
 /** 13. Reaction Picker -- 5 emoji-style circles that inflate on hover region. */
 export function ReactionPicker(o = {}) {
-    let sizes=new Float32Array(5), selected=-1;
+    let sizes=new Float32Array(5).fill(10), selected=-1;   // seed at the rest radius so frame 0 draws full discs, not radius-0 nothing
     const emojis=['\u{1F610}','\u{1F642}','\u{1F60A}','\u{1F604}','\u{1F929}'];
     // `colors` is the 5-reaction palette; `theme` seeds it. Normalised to 5.
     const base = o.colors ? o.colors
         : (o.theme ? [o.theme.light,o.theme.mid,o.theme.dark,o.theme.light,o.theme.mid] : ['#9999b8','#fbbf24','#fb923c','#f472b6','#ff6b6b']);
     const colors = base.length>=5 ? base : Array.from({length:5},(_,i)=>base[i%base.length]);
     const colors30=colors.map((col)=>col+'30');                  // active fill (was `${color}30`)
+    const REST_FILL='rgba(255,255,255,.10)';                     // at-rest disc: was 4% (near-invisible); 10% so the row always reads
+    const RING='rgba(255,255,255,.22)';                          // hairline ring, theme-invariant: keeps the control legible even if the emoji glyph never paints
     const REACT_LABELS=['MEH','OK','NICE','GREAT','LOVE'];        // was a per-frame array literal
     const FONTS=[]; for(let i=0;i<=48;i++)FONTS[i]=i+'px sans-serif'; // emoji font by rounded size
     return {
@@ -2562,21 +2564,25 @@ export function ReactionPicker(o = {}) {
             const gap=st.w/5;
             const hoverIdx=st.hover?clamp(Math.floor(ptr.x/gap),0,4):-1;
 
+            c.lineWidth=1;c.strokeStyle=RING;   // ring state is constant across the 5 discs -- set once per frame
             for(let i=0;i<5;i++){
                 const active=i===hoverIdx;
                 sizes[i]=lerp(sizes[i],active?16:10,dt*12);
                 const cx=gap*i+gap/2,cy=st.h/2;
 
-                // Circle
-                c.fillStyle=active?colors30[i]:'rgba(255,255,255,.04)';
-                c.beginPath();c.arc(cx,cy-sizes[i]+10,sizes[i],0,PI2);c.fill();
+                // Disc + hairline ring. The ring is the robustness net: the disc
+                // fill is faint and the emoji may not paint at all (a colour-emoji
+                // font draws its own glyph; a mono/absent font leaves almost
+                // nothing), but a stroked ring always renders, so the control never
+                // reads blank -- on frame 0 or in an emoji-less environment.
+                c.fillStyle=active?colors30[i]:REST_FILL;
+                c.beginPath();c.arc(cx,cy-sizes[i]+10,sizes[i],0,PI2);c.fill();c.stroke();
 
                 // Emoji face -- font from a const-string LUT. Set an OPAQUE fill
-                // first: the circle's fillStyle above is translucent (4% at rest),
-                // and a colour glyph inherits that alpha, so without this the faces
-                // are invisible until hover. colors[i] keeps a mono-emoji fallback
-                // tinted per reaction; a colour-emoji font ignores the hue and only
-                // takes the full alpha. Precomputed array read -- zero alloc.
+                // first: the disc + ring above are translucent, and a colour glyph
+                // inherits that alpha, so without this the faces are dim. colors[i]
+                // keeps a mono-emoji fallback tinted per reaction; a colour-emoji
+                // font ignores the hue and only takes the full alpha. Array read -- zero alloc.
                 c.font=FONTS[Math.round(sizes[i]*1.2)]||FONTS[48];c.textAlign='center';c.textBaseline='middle';
                 c.fillStyle=colors[i];
                 c.fillText(emojis[i],cx,cy-sizes[i]+10);
@@ -3433,4 +3439,207 @@ export function mountRecipe(container, id, options) {
     }
     return mountUIFX(container, type, factory, mountOptions);
 }
+
+// ===========================================================
+//  HEADLESS SKINS (E1, decisions/0008)
+//  A skin is an ordinary recipe PLUS a `headless` descriptor:
+//    { attrs: string[], read(host, handle, state) }
+//  skinHeadless (controller) observes `attrs` on the lite-headless primitive's
+//  painted element and calls read() at EVENT time to parse the painted state into
+//  preallocated state slots. Skins live in their OWN registry (HEADLESS_SKINS /
+//  SKIN_META), NOT RECIPES/RECIPE_META: a skin needs a handle + host, not a
+//  container, so it does not fit mountRecipe. The 57-recipe count is unchanged.
+// ===========================================================
+
+// Painted-attribute readers (EVENT time only -- never a per-frame call, so
+// getAttribute/parseFloat here are off the hot path). A boolean is PRESENT with any
+// value except the string "false" (handles presence-booleans like data-disabled and
+// value-booleans like the switch's data-checked="true"; decisions/0008 decision 3).
+function _skinBool(el, name) {
+    if (!el.hasAttribute(name)) return false;
+    return el.getAttribute(name) !== 'false';
+}
+function _ariaTrue(el, name) { return el.getAttribute(name) === 'true'; }
+function _skinNum(el, name, def) {
+    const v = el.getAttribute(name);
+    if (v == null) return def;
+    const n = parseFloat(v);
+    return n === n ? n : def;   // n===n rejects NaN without an isNaN call
+}
+
+/** Switch skin -- a sliding track+knob driven by the primitive's data-checked /
+ *  aria-checked. Zero per-frame alloc: const colors, globalAlpha, one eased scalar. */
+export function SwitchSkin(o = {}) {
+    const P = resolveTheme(o, { accent: '#38bdf8', dim: '#3a3a4a', dim2: '#e2e2f0' });
+    let t = 0;   // animated 0..1 toward the checked state
+    return {
+        headless: {
+            attrs: ['data-checked', 'aria-checked', 'data-disabled', 'aria-disabled'],
+            read(host, handle, st) {
+                st.toggled = _skinBool(host, 'data-checked') || _ariaTrue(host, 'aria-checked')
+                    || (handle && typeof handle.isChecked === 'function' ? !!handle.isChecked() : false);
+                st.disabled = _skinBool(host, 'data-disabled') || _ariaTrue(host, 'aria-disabled');
+            },
+        },
+        tick(c, dt, now, st) {
+            const w = st.w, h = st.h, r = h / 2;
+            const k = dt * 12; t += ((st.toggled ? 1 : 0) - t) * (k > 1 ? 1 : k);
+            c.globalAlpha = st.disabled ? 0.4 : 1;
+            c.fillStyle = st.toggled ? P.accent : P.dim;
+            roundRect(c, 0, 0, w, h, r); c.fill();
+            const kx = r + t * (w - h);
+            c.fillStyle = P.dim2;
+            c.beginPath(); c.arc(kx, r, r - 3, 0, PI2); c.fill();
+            c.globalAlpha = 1;
+            if (st.focused) fr(c, w, h, r);
+        },
+    };
+}
+
+/** Slider skin -- rail + fill + thumb, driven by aria-valuenow/min/max; the thumb
+ *  pulses while data-dragging is painted. */
+export function SliderSkin(o = {}) {
+    const P = resolveTheme(o, { accent: '#fbbf24', dim: '#9999b8', dim2: '#e2e2f0' });
+    let dv = 0;   // displayed value, eased toward st.val
+    return {
+        headless: {
+            attrs: ['aria-valuenow', 'aria-valuemin', 'aria-valuemax', 'data-disabled', 'data-dragging'],
+            read(host, handle, st) {
+                const mn = _skinNum(host, 'aria-valuemin', 0);
+                const mx = _skinNum(host, 'aria-valuemax', 100);
+                const nw = _skinNum(host, 'aria-valuenow', mn);
+                const span = mx - mn;
+                let v = span > 0 ? (nw - mn) / span : 0;
+                st.val = v < 0 ? 0 : (v > 1 ? 1 : v);
+                st.active = _skinBool(host, 'data-dragging');
+                st.disabled = _skinBool(host, 'data-disabled');
+            },
+        },
+        tick(c, dt, now, st) {
+            const w = st.w, cy = st.h / 2;
+            const k = dt * 10; dv += (st.val - dv) * (k > 1 ? 1 : k);
+            c.globalAlpha = st.disabled ? 0.2 : 0.4;
+            c.fillStyle = P.dim; roundRect(c, 0, cy - 2, w, 4, 2); c.fill();
+            const fx = dv * w;
+            c.globalAlpha = st.disabled ? 0.4 : 1;
+            c.fillStyle = P.accent; roundRect(c, 0, cy - 2, fx > 0 ? fx : 0, 4, 2); c.fill();
+            const tr = st.active ? 8 : 6;
+            c.fillStyle = P.dim2;
+            c.beginPath(); c.arc(fx, cy, tr, 0, PI2); c.fill();
+            if (st.active) {
+                c.globalAlpha = 0.3; c.fillStyle = P.accent;
+                c.beginPath(); c.arc(fx, cy, tr + 5, 0, PI2); c.fill();
+            }
+            c.globalAlpha = 1;
+            if (st.focused) fr(c, w, st.h, cy);
+        },
+    };
+}
+
+/** Progress skin -- a value ring (aria-valuenow/max) with a percent label; an
+ *  indeterminate sweep when data-loading, a full accent ring when data-complete. */
+export function ProgressSkin(o = {}) {
+    const P = resolveTheme(o, { accent: '#6ee7b6', accent2: '#a78bfa', dim: '#e2e2f0' });
+    const FONT = pickFont(o, "700 14px 'JetBrains Mono',monospace");
+    let dv = 0;     // displayed value
+    let spin = 0;   // indeterminate sweep phase
+    return {
+        headless: {
+            attrs: ['aria-valuenow', 'aria-valuemin', 'aria-valuemax', 'data-complete', 'data-loading'],
+            read(host, handle, st) {
+                const mn = _skinNum(host, 'aria-valuemin', 0);
+                const mx = _skinNum(host, 'aria-valuemax', 100);
+                const nw = _skinNum(host, 'aria-valuenow', mn);
+                const span = mx - mn;
+                let v = span > 0 ? (nw - mn) / span : 0;
+                st.val = v < 0 ? 0 : (v > 1 ? 1 : v);
+                st.complete = _skinBool(host, 'data-complete');
+                st.indeterminate = _skinBool(host, 'data-loading');
+            },
+        },
+        tick(c, dt, now, st) {
+            const cx = st.w / 2, cy = st.h / 2, R = Math.min(cx, cy) - 6, lw = 6;
+            c.strokeStyle = P.dim; c.globalAlpha = 0.15; c.lineWidth = lw;
+            c.beginPath(); c.arc(cx, cy, R, 0, PI2); c.stroke();
+            c.globalAlpha = 1;
+            if (st.indeterminate && !st.complete) {
+                spin += dt * 3;
+                c.strokeStyle = P.accent; c.lineWidth = lw;
+                c.beginPath(); c.arc(cx, cy, R, spin, spin + 1.6); c.stroke();
+            } else {
+                const target = st.complete ? 1 : st.val;
+                const k = dt * 6; dv += (target - dv) * (k > 1 ? 1 : k);
+                const a = -Math.PI / 2, ea = a + dv * PI2;
+                c.strokeStyle = st.complete ? P.accent : P.accent2; c.lineWidth = lw;
+                c.beginPath(); c.arc(cx, cy, R, a, ea); c.stroke();
+                c.fillStyle = P.dim; c.font = FONT; c.textAlign = 'center'; c.textBaseline = 'middle';
+                c.fillText(PCT[Math.round(dv * 100)], cx, cy);
+            }
+            if (st.focused) fr(c, st.w, st.h, st.h / 2);
+        },
+    };
+}
+
+/** Rating skin -- N bubbles (count from aria-valuemax, bounded) filled to
+ *  aria-valuenow/max. Fixed-count loop, no per-frame allocation. */
+export function RatingSkin(o = {}) {
+    const P = resolveTheme(o, { accent: '#f472b6', dim: '#3a3a4a' });
+    let dv = 0;   // animated filled count
+    return {
+        headless: {
+            attrs: ['aria-valuenow', 'aria-valuemax', 'data-disabled'],
+            read(host, handle, st) {
+                const mx = _skinNum(host, 'aria-valuemax', 5);
+                const nw = _skinNum(host, 'aria-valuenow', 0);
+                let n = mx > 0 ? (mx | 0) : 5;
+                st.count = n > 10 ? 10 : n;
+                let v = mx > 0 ? nw / mx : 0;
+                st.val = v < 0 ? 0 : (v > 1 ? 1 : v);
+                st.disabled = _skinBool(host, 'data-disabled');
+            },
+        },
+        tick(c, dt, now, st) {
+            const n = st.count > 0 ? st.count : 5;
+            const k = dt * 12; dv += (st.val * n - dv) * (k > 1 ? 1 : k);
+            const cy = st.h / 2;
+            const gap = st.w / n;
+            const rad = (gap < st.h ? gap : st.h) * 0.32;
+            const base = st.disabled ? 0.4 : 1;
+            for (let i = 0; i < n; i++) {
+                const cx = gap * (i + 0.5);
+                const fillAmt = dv - i;
+                c.globalAlpha = base * 0.35; c.fillStyle = P.dim;
+                c.beginPath(); c.arc(cx, cy, rad, 0, PI2); c.fill();
+                if (fillAmt > 0) {
+                    c.globalAlpha = base * (fillAmt > 1 ? 1 : fillAmt); c.fillStyle = P.accent;
+                    c.beginPath(); c.arc(cx, cy, rad, 0, PI2); c.fill();
+                }
+            }
+            c.globalAlpha = 1;
+            if (st.focused) fr(c, st.w, st.h, st.h / 2);
+        },
+    };
+}
+
+/**
+ * The headless-skin registry -- a SIBLING of RECIPES, not part of it (decisions/
+ * 0008 decision 4). id -> factory (null-prototype), the meta rows a picker/demo
+ * iterates, and the frozen id list. Each skin is driven by skinHeadless with a
+ * lite-headless handle + host, never by mountRecipe.
+ */
+export const HEADLESS_SKINS = Object.assign(Object.create(null), {
+    switchSkin: SwitchSkin,
+    sliderSkin: SliderSkin,
+    progressSkin: ProgressSkin,
+    ratingSkin: RatingSkin,
+});
+
+export const SKIN_META = [
+    { id: 'switchSkin', name: 'Switch Skin', primitive: 'switch', themeable: true, motionSafe: false },
+    { id: 'sliderSkin', name: 'Slider Skin', primitive: 'slider', themeable: true, motionSafe: false },
+    { id: 'progressSkin', name: 'Progress Skin', primitive: 'progress', themeable: true, motionSafe: false },
+    { id: 'ratingSkin', name: 'Rating Skin', primitive: 'rating', themeable: true, motionSafe: false },
+];
+
+export const SKIN_NAMES = Object.freeze(Object.keys(HEADLESS_SKINS));
 

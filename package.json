@@ -1,7 +1,7 @@
 {
   "name": "@zakkster/lite-ui-fx",
-  "version": "1.9.1",
-  "description": "Canvas-hijacked UI components with a pluggable recipe system. 50 built-in recipes across toggles, buttons, sliders, knobs, loaders, checkboxes, counters, and ratings.",
+  "version": "1.10.0",
+  "description": "Canvas-hijacked UI components with a pluggable recipe system: 57 built-in recipes across toggles, buttons, sliders, knobs, loaders, checkboxes, counters and ratings, in three mount modes (hijack, decorate, grouped controls) plus a lite-headless skin adapter.",
   "author": "Zahary Shinikchiev <shinikchiev@yahoo.com>",
   "license": "MIT",
   "type": "module",
@@ -16,6 +16,10 @@
     "./recipes": {
       "import": "./UIFXRecipes.js",
       "types": "./UIFXRecipes.d.ts"
+    },
+    "./headless": {
+      "import": "./UIFXHeadless.js",
+      "types": "./UIFXHeadless.d.ts"
     }
   },
   "files": [
@@ -23,6 +27,8 @@
     "UIFXController.d.ts",
     "UIFXRecipes.js",
     "UIFXRecipes.d.ts",
+    "UIFXHeadless.js",
+    "UIFXHeadless.d.ts",
     "UIFX-RECIPE-GUIDE.md",
     "llms.txt",
     "CHANGELOG.md",

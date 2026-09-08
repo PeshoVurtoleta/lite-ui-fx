@@ -131,9 +131,9 @@ class ElementStub {
         const i = p._children.indexOf(this);
         return (i >= 0 && i + 1 < p._children.length) ? p._children[i + 1] : null;
     }
-    setAttribute(k, v) { this._attrs.set(k, String(v)); }
+    setAttribute(k, v) { this._attrs.set(k, String(v)); _notifyAttr(this, k); }
     getAttribute(k) { return this._attrs.has(k) ? this._attrs.get(k) : null; }
-    removeAttribute(k) { this._attrs.delete(k); }
+    removeAttribute(k) { this._attrs.delete(k); _notifyAttr(this, k); }
     hasAttribute(k) { return this._attrs.has(k); }
     get children() { return this._children; }
     appendChild(child) { child.parentNode = this; this._children.push(child); return child; }
@@ -232,6 +232,63 @@ class PointerEventStub extends EventStub {}
 class FocusEventStub extends EventStub {}
 
 // ---------------------------------------------------------------------------
+//  MutationObserver (skinHeadless, E1): drives a headless-skin's read() when the
+//  lite-headless primitive paints a state attribute. Node has no MutationObserver;
+//  this minimal stub fires SYNCHRONOUSLY on setAttribute/removeAttribute (a real
+//  MutationObserver batches records on a microtask). skinHeadless re-reads full
+//  state on every callback and is order/timing-independent, so a synchronous stub
+//  and a real async observer drive it identically -- a test can assert state right
+//  after setAttribute without awaiting a tick.
+// ---------------------------------------------------------------------------
+
+// One live registry of observations so a plain setAttribute can find its watchers
+// without every element holding a back-reference. Empty in every non-skin test, so
+// _notifyAttr is a zero-iteration no-op there (the existing recipes never observe).
+const _observations = new Set(); // { observer, target, filter: Set|null, subtree }
+
+function _isAncestorOf(anc, node) {
+    let p = node.parentNode;
+    while (p) { if (p === anc) return true; p = p.parentNode; }
+    return false;
+}
+
+// Fire the matching observers for an attribute change on `el`. attributeFilter and
+// subtree are honoured. Records are the real shape (type/target/attributeName) so a
+// consumer that reads them still works; skinHeadless ignores them and re-reads.
+function _notifyAttr(el, name) {
+    if (_observations.size === 0) return;
+    for (const o of _observations) {
+        if (o.filter && !o.filter.has(name)) continue;
+        if (o.target === el || (o.subtree && _isAncestorOf(o.target, el))) {
+            o.observer._cb([{ type: 'attributes', target: el, attributeName: name }], o.observer);
+        }
+    }
+}
+
+class MutationObserverStub {
+    constructor(cb) {
+        if (typeof cb !== 'function') throw new TypeError('MutationObserver: callback must be a function');
+        this._cb = cb;
+        this._recs = new Set();
+    }
+    observe(target, opts = {}) {
+        const rec = {
+            observer: this,
+            target,
+            filter: opts.attributeFilter ? new Set(opts.attributeFilter) : null,
+            subtree: !!opts.subtree,
+        };
+        this._recs.add(rec);
+        _observations.add(rec);
+    }
+    disconnect() {
+        for (const rec of this._recs) _observations.delete(rec);
+        this._recs.clear();
+    }
+    takeRecords() { return []; }
+}
+
+// ---------------------------------------------------------------------------
 //  Document / window
 // ---------------------------------------------------------------------------
 
@@ -298,6 +355,7 @@ function installDom({ dpr = 1 } = {}) {
     globalThis.Event = EventStub;
     globalThis.PointerEvent = PointerEventStub;
     globalThis.FocusEvent = FocusEventStub;
+    globalThis.MutationObserver = MutationObserverStub;  // E1: skinHeadless observes painted attrs
     if (!globalThis.performance) {
         globalThis.performance = { now: () => Number(process.hrtime.bigint() / 1000000n) };
     }
@@ -356,5 +414,6 @@ export {
     EventStub,
     PointerEventStub,
     FocusEventStub,
+    MutationObserverStub,
     FakeTicker,
 };

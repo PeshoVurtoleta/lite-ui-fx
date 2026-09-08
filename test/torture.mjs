@@ -138,6 +138,7 @@ const { runT2 } = await import('./torture/t2-a11y-contract.mjs');
 const { runT3 } = await import('./torture/t3-frame-alloc.mjs');
 const { runT4 } = await import('./torture/t4-soak.mjs');
 const { runT5 } = await import('./torture/t5-scale.mjs');
+const { runT6 } = await import('./torture/t6-headless-skins.mjs');
 
 await tier('t0-lifecycle', runT0);
 await tier('t1-degenerate', runT1);
@@ -145,6 +146,7 @@ await tier('t2-a11y-contract', runT2);
 await tier('t3-frame-alloc', runT3);
 const r4 = await tier('t4-soak', runT4);
 await tier('t5-scale', runT5);
+await tier('t6-headless-skins', runT6);
 
 // t5 IS imported and executed above; it is partially filled, not skipped.
 console.error('partial tier=t5-scale (U-02 regression + single-RAF + U5 host-clock ownership; scale-cost/alloc left)');

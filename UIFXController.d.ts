@@ -233,6 +233,87 @@ export declare function decorateUIFX(
 ): DecorateInstance;
 
 // =========================================================
+//  skinHeadless -- paint a lite-headless primitive (decisions/0008, E1)
+// =========================================================
+
+/**
+ * The descriptor that makes a recipe skinnable: the painted attributes to observe
+ * and how to parse them into recipe state. read() runs at EVENT time (init + every
+ * mutation), never per frame -- so it may read attributes freely.
+ */
+export interface HeadlessSkinDescriptor {
+    /** The painted state attributes to observe (MutationObserver attributeFilter). */
+    attrs: string[];
+    /** Parse the primitive's painted attributes into the preallocated state slots
+     *  (state.val/toggled/disabled/complete/... ). `handle` is the lite-headless
+     *  primitive handle for an optional signal fast path, or null. */
+    read(host: HTMLElement, handle: any, state: UIFXState): void;
+}
+
+/** A recipe usable with skinHeadless: an ordinary recipe plus a `headless`
+ *  descriptor. Additive to UIFXRecipe -- no hook is added or changed. */
+export interface HeadlessSkinRecipe extends UIFXRecipe {
+    headless: HeadlessSkinDescriptor;
+}
+
+export type HeadlessSkinRecipeFactory = (options?: SkinOptions) => HeadlessSkinRecipe;
+
+/**
+ * Options accepted by skinHeadless. The decorate subset PLUS `host` (the element
+ * the primitive paints on, REQUIRED). The hijack-only options are rejected.
+ */
+export interface SkinOptions extends HostClockOptions {
+    /** The element the lite-headless primitive paints on: the overlay + observer
+     *  target (REQUIRED). */
+    host: HTMLElement;
+    /** Overlay padding around the host, in px (default 40). */
+    padding?: number;
+    seed?: number;
+    colors?: string[];
+    theme?: { light: string; mid: string; dark: string };
+    text?: string;
+    font?: string;
+}
+
+/**
+ * The instance returned by skinHeadless. Like DecorateInstance: no wrapper, and
+ * setValue/setChecked are hijack-only (a skin reflects the primitive, it does not
+ * drive it, so both throw).
+ */
+export interface SkinInstance {
+    /** The skinned host element (unchanged -- skinHeadless never mutates it). */
+    el: HTMLElement;
+    /** The overlay canvas (the only DOM node skinHeadless adds). */
+    canvas: HTMLCanvasElement;
+    state: UIFXState;
+    /** Drive one frame by hand (U5). Callable ONLY with { driven: true }. */
+    tick(dtMs: number): void;
+    /** Hijack-only. Throws in skin mode. */
+    setValue(v?: number | null): void;
+    /** Hijack-only. Throws in skin mode. */
+    setChecked(b?: boolean): void;
+    /** Remove the overlay + observer + every listener the skin added; the host AND
+     *  the lite-headless handle are left untouched. Idempotent. */
+    destroy(): void;
+}
+
+/**
+ * Skin a @zakkster/lite-headless primitive: place a canvas over the element it
+ * paints on and drive a recipe from the primitive's PAINTED state attributes --
+ * lite-ui-fx paints, lite-headless behaves. Arm's-length: it couples through the
+ * painted-attribute contract (lite-headless docs/CSS_CONTRACT.md), NEVER an import,
+ * so lite-headless is never a dependency. Structurally a decoration (0004): no
+ * native element, host byte-identical, one overlay canvas + one MutationObserver
+ * removed on destroy; the `handle` is never destroyed (the caller owns it). The
+ * recipe MUST carry a `headless` descriptor. See decisions/0008.
+ */
+export declare function skinHeadless(
+    handle: any,
+    recipeFactory: HeadlessSkinRecipeFactory,
+    options: SkinOptions
+): SkinInstance;
+
+// =========================================================
 //  Grouped controls (U7, decisions/0007)
 // =========================================================
 

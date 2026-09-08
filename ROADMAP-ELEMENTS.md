@@ -178,6 +178,40 @@ plus one new decision record and one post-enrichment candidate.
 
 ---
 
+## 2a. External input -- lite-headless 1.9.x canon primitives (added 2026-09-07)
+
+Suggestion from a @zakkster/lite-headless session (no lite-ui-fx code touched --
+one-package law). Section 4's Sources cite lite-headless 1.8.0 / 59 primitives;
+the catalog is now **1.9.1 / 62**. Three new canon primitives (finding LH-07,
+ADR 0008) ship documented painted `data-*` / ARIA contracts -- i.e. new V4
+`skinHeadless` surface -- and one of them RESOLVES the open item 6 decision:
+
+- **`createSelect`** (listbox-button -- the WAI-ARIA select-only combobox)
+  directly answers item 6. lite-headless now has a DEDICATED select distinct from
+  the editable `combobox`: the exact closed-trigger + listbox pattern that
+  decision is about, positioning/keyboard/dismiss already owned and tortured
+  upstream. Painted contract -- trigger: `aria-expanded` / `aria-haspopup=listbox`
+  / `aria-controls` / `aria-activedescendant`; listbox: `data-open` /
+  `data-status` / `data-side` / `data-align`; option: `role=option` /
+  `aria-selected` / `data-selected` / `data-highlighted` / `data-disabled`.
+  Recommendation: resolve item 6 toward **V4-skin `createSelect`** (a zero-ARIA
+  canvas skin over the open + closed states) rather than a V1 `<select>` hijack.
+- **`createCheckbox`** (tri-state on ONE 3-valued signal) paints
+  `aria-checked="true|false|mixed"` + `data-checked` / `data-indeterminate` /
+  `data-disabled` on the root. A V4 tri-state checkbox skin is now possible --
+  complementing (not replacing) the shipped V1 `UIType.CHECKBOX` hijack: V1 for a
+  standalone canvas checkbox, V4 for apps ALREADY composing lite-headless.
+- **`createCheckboxGroup`** (DERIVED tri-state + select-all master) is the group
+  surface for a "select-all -> mixed -> all" canvas visual; the master paints the
+  aggregate straight from the members.
+
+Net suggestion: add `select`, `checkbox`, `checkbox-group` to the E1 / V4
+`skinHeadless` candidate list, and close item 6 with `createSelect`. Each
+primitive's painted contract lives in its own `src/<name>/llms.txt` in the
+lite-headless repo. Non-binding -- planning input, same as the rest of this doc.
+
+---
+
 ## 3. Demand snapshot (triangulated; caveats below)
 
 Top visually-rich interactive controls by copy-paste ubiquity (proxied from

@@ -44,6 +44,7 @@ doc.querySelector = () => {
 function resolveSpec(spec) {
     if (spec === '@zakkster/lite-ui-fx') return pathToFileURL(join(ROOT, 'UIFXController.js')).href;
     if (spec === '@zakkster/lite-ui-fx/recipes') return pathToFileURL(join(ROOT, 'UIFXRecipes.js')).href;
+    if (spec === '@zakkster/lite-ui-fx/headless') return pathToFileURL(join(ROOT, 'UIFXHeadless.js')).href;
     return pathToFileURL(require.resolve(spec)).href;
 }
 

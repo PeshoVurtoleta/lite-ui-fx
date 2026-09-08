@@ -50,6 +50,7 @@ Three runtime dependencies, all zero-GC (`@zakkster/lite-ticker`, `lite-lerp`, `
   - [mountUIFX](#mountuifxcontainer-type-recipefactory-options)
   - [decorateUIFX](#decorateuifxel-recipefactory-options)
   - [mountUIFXGroup](#mountuifxgroupcontainer-grouptype-recipefactory-options)
+  - [skinHeadless](#skinheadlesshandle-recipefactory-options)
   - [The recipe registry](#the-recipe-registry)
   - [Constants: UITypes, state, META](#constants-uitypes-state-meta)
 - [Host clock and reduced motion](#host-clock-and-reduced-motion)
@@ -79,6 +80,7 @@ The alternative is a hand-rolled canvas threshold loop (no a11y, allocates freel
 - **`mountUIFX(container, type, recipeFactory, options?)`** -- the hijack mount. Creates a real native element (invisible, accessible) under a DPR-scaled canvas and drives the recipe. Six element types: `TOGGLE`, `BUTTON`, `SLIDER`, `CHECKBOX`, `PROGRESS`, `KNOB`.
 - **`decorateUIFX(el, recipeFactory, options?)`** -- the decorate mount. Places a canvas *around* an existing visible element (a live `<input>`), reading `state.text`/`state.valid` from the host's own events. The host is byte-identical before and after; `destroy()` removes only the overlay.
 - **`mountUIFXGroup(container, groupType, recipeFactory, options)`** -- the group mount. N native elements + one canvas + one recipe: `RADIO`/`RATING` (a fieldset radiogroup), `TABS` (an APG tablist with roving tabindex), `STEPPER` (a spinbutton). The recipe reads `state.index`/`state.count`; selection and keyboard are the native elements' own.
+- **`skinHeadless(handle, recipeFactory, options)`** -- the headless-skin adapter (on the `./headless` subpath). Paints a `@zakkster/lite-headless` primitive by observing the state attributes it paints -- never importing lite-headless, so it stays a compose-target, not a dependency.
 - **57 built-in recipes** on the `./recipes` subpath, versioned, typed, and tree-shakeable. With `sideEffects: false`, importing one recipe drops the other 56. Families: Toggles (7), Buttons (9), Sliders (7), Knobs (2), Progress (4), Checkboxes (4), Loaders (2), Counters (2), Rating (1), Controls (4), Indicators (3), Mood (3), Feedback (3), Fun (3), Form decorations (3).
 - **A registry for data-driven UIs** -- `RECIPES` (id -> factory, null-prototype), `RECIPE_META` (`{ id, name, type, family, themeable, motionSafe }`), `RECIPE_NAMES`, `registerRecipe(id, factory, meta)`, and `mountRecipe(container, id, options?)` which resolves the id fail-closed (did-you-mean on a typo) and mounts it as its declared type.
 - **One option convention for theming** -- `{ colors, theme: { light, mid, dark }, text, font }` honoured by all 57 recipes, resolved once in `init` so a themed mount stays zero-GC and a bare mount is byte-identical to pre-theming.
@@ -204,6 +206,32 @@ tabs.destroy();
 ```
 
 Built-in group recipes: `PillTabs`, `SegmentedSlide` (`TABS`), `RadioOrbit` (`RADIO`), `Stepper` (`STEPPER`), `BubbleRating` (`RATING`). The first four re-home from their vol.3 single-element fakes to real groups (so their arrow-key selection is finally correct); `mountRecipe(container, id, { items })` routes them here by `META.type`.
+
+### `skinHeadless(handle, recipeFactory, options)`
+
+The fourth mount adapter, on the `./headless` subpath: **skin a `@zakkster/lite-headless` primitive.** lite-headless ships ARIA-correct primitives that render nothing and paint a canonical set of state attributes; `skinHeadless` places a canvas over the element a primitive paints on and drives a recipe from those attributes -- lite-ui-fx paints, lite-headless behaves. It couples through the painted-attribute contract, never an import, so **lite-headless is never a dependency**. Structurally a decoration: the host is byte-identical, one overlay canvas + one `MutationObserver` are removed on `destroy()`, and the primitive `handle` is never destroyed (the caller owns it).
+
+`options`: `host` (the element the primitive paints on, **required**) plus `padding`, `seed`, `colors`, `theme`, `text`, `font`, `ticker`, `driven`. `setValue`/`setChecked` throw -- a skin reflects the primitive, it does not drive it.
+
+A skin is an ordinary recipe plus a descriptor -- `recipe.headless = { attrs, read(host, handle, state) }`. `skinHeadless` observes `attrs` and calls `read()` at **event time** (never per frame) to parse the painted state into preallocated slots. A painted attribute is truthy when present with any value but `"false"` (so both a boolean `data-disabled` and a value `data-checked="true"` work). The four E1 skins live in a registry (`HEADLESS_SKINS` / `SKIN_META`) separate from the 57 recipes.
+
+```js
+import { skinHeadless, SwitchSkin } from '@zakkster/lite-ui-fx/headless';
+
+// `sw` is your @zakkster/lite-headless primitive (e.g. createSwitch({ ... })).
+// The skin never imports lite-headless -- it observes the attributes it paints.
+const sw = null;                                        // <- your lite-headless switch handle
+const thumb = document.querySelector('[data-switch-thumb]');
+
+const skin = skinHeadless(sw, SwitchSkin, {
+  host: thumb,
+  theme: { light: '#38bdf8', mid: '#3a3a4a', dark: '#0a0a12' },
+});
+// the overlay now tracks data-checked / aria-checked as the switch paints them
+skin.destroy();                                         // host + handle left untouched
+```
+
+E1 skins: `SwitchSkin` (`data-checked`), `SliderSkin` (`aria-valuenow`/`min`/`max`), `ProgressSkin` (`aria-valuenow`/`max` + `data-complete`/`data-loading`), `RatingSkin` (`aria-valuenow`/`max`). See [0008](decisions/0008-headless-skins.md).
 
 ### The recipe registry
 
@@ -348,6 +376,7 @@ Each is an ADR under [`decisions/`](decisions/):
 - **[0005](decisions/0005-host-clock.md) -- Host clock, reduced motion, frame budget.** Three clock modes, `state.reducedMotion` as a flag the recipe reads, `state.budget` for graceful degradation -- all additive, default path byte-identical.
 - **[0006](decisions/0006-docs-and-demo.md) -- Blueprint docs + a demo that consumes the package.** This README on the blueprint spine, and one demo generated from `RECIPE_META` that imports only public exports (no more inline reimplementation).
 - **[0007](decisions/0007-group-contract.md) -- Grouped controls: one canvas, N native elements.** A third mount mode (`mountUIFXGroup`) for radio/tabs/stepper/rating; `onSelect` is a ninth, group-only hook and group state a superset of scalar state, so the single-element API is byte-identical (additive, 1.9.0).
+- **[0008](decisions/0008-headless-skins.md) -- Headless skins: paint a lite-headless primitive.** `skinHeadless` couples through the painted-attribute contract (one `MutationObserver`, parsed at event time), never an import -- so lite-headless is a compose-target, never a dependency. The four skins live in a registry separate from the 57 recipes (additive, 1.10.0).
 
 ---
 
