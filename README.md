@@ -1,6 +1,6 @@
 # @zakkster/lite-ui-fx
 
-> Canvas microinteractions on real native controls. A DPR-aware canvas is hijacked over a hidden native element -- decorated around a live one -- or shared across a group of them -- and painted by a pluggable, zero-GC **recipe**. The native element owns focus, keyboard, and pointer events; the canvas owns the visuals. 57 built-in recipes behind a tree-shakeable registry, one option convention for theming, one clock you can hand it, and reduced-motion built in.
+> Canvas microinteractions on real native controls. A DPR-aware canvas is hijacked over a hidden native element -- decorated around a live one -- or shared across a group of them -- and painted by a pluggable, zero-GC **recipe**. The native element owns focus, keyboard, and pointer events; the canvas owns the visuals. 65 built-in recipes behind a tree-shakeable registry, one option convention for theming, one clock you can hand it, and reduced-motion built in.
 
 [![npm version](https://img.shields.io/npm/v/@zakkster/lite-ui-fx.svg?style=for-the-badge&color=latest)](https://www.npmjs.com/package/@zakkster/lite-ui-fx)
 ![Zero-GC](https://img.shields.io/badge/Zero--GC-Recipes-00C853?style=for-the-badge&logo=leaf&logoColor=white)
@@ -81,9 +81,9 @@ The alternative is a hand-rolled canvas threshold loop (no a11y, allocates freel
 - **`decorateUIFX(el, recipeFactory, options?)`** -- the decorate mount. Places a canvas *around* an existing visible element (a live `<input>`), reading `state.text`/`state.valid` from the host's own events. The host is byte-identical before and after; `destroy()` removes only the overlay.
 - **`mountUIFXGroup(container, groupType, recipeFactory, options)`** -- the group mount. N native elements + one canvas + one recipe: `RADIO`/`RATING` (a fieldset radiogroup), `TABS` (an APG tablist with roving tabindex), `STEPPER` (a spinbutton). The recipe reads `state.index`/`state.count`; selection and keyboard are the native elements' own.
 - **`skinHeadless(handle, recipeFactory, options)`** -- the headless-skin adapter (on the `./headless` subpath). Paints a `@zakkster/lite-headless` primitive by observing the state attributes it paints -- never importing lite-headless, so it stays a compose-target, not a dependency.
-- **57 built-in recipes** on the `./recipes` subpath, versioned, typed, and tree-shakeable. With `sideEffects: false`, importing one recipe drops the other 56. Families: Toggles (7), Buttons (9), Sliders (7), Knobs (2), Progress (4), Checkboxes (4), Loaders (2), Counters (2), Rating (1), Controls (4), Indicators (3), Mood (3), Feedback (3), Fun (3), Form decorations (3).
+- **65 built-in recipes** on the `./recipes` subpath, versioned, typed, and tree-shakeable. With `sideEffects: false`, importing one recipe drops the other 64. Families: Toggles (7), Buttons (9), Sliders (7), Knobs (2), Progress (4), Checkboxes (4), Loaders (2), Counters (2), Rating (1), Controls (4), Indicators (3), Mood (3), Feedback (3), Fun (3), Form decorations (3), Text (3), Card (3), Pointer (2).
 - **A registry for data-driven UIs** -- `RECIPES` (id -> factory, null-prototype), `RECIPE_META` (`{ id, name, type, family, themeable, motionSafe }`), `RECIPE_NAMES`, `registerRecipe(id, factory, meta)`, and `mountRecipe(container, id, options?)` which resolves the id fail-closed (did-you-mean on a typo) and mounts it as its declared type.
-- **One option convention for theming** -- `{ colors, theme: { light, mid, dark }, text, font }` honoured by all 57 recipes, resolved once in `init` so a themed mount stays zero-GC and a bare mount is byte-identical to pre-theming.
+- **One option convention for theming** -- `{ colors, theme: { light, mid, dark }, text, font }` honoured by all 65 recipes, resolved once in `init` so a themed mount stays zero-GC and a bare mount is byte-identical to pre-theming.
 - **Host integration** -- ride a caller-supplied `lite-ticker` (`{ ticker }`), drive frames by hand (`{ driven: true }` + `instance.tick(dtMs)`), or take the shared ref-counted ticker by default. Plus `state.reducedMotion` (matchMedia-watched) and `state.budget` (0..1 frame budget).
 - **Full TypeScript declarations** for both entry points, and a written recipe guide ([`UIFX-RECIPE-GUIDE.md`](UIFX-RECIPE-GUIDE.md)) shipped in the package.
 
@@ -213,7 +213,7 @@ The fourth mount adapter, on the `./headless` subpath: **skin a `@zakkster/lite-
 
 `options`: `host` (the element the primitive paints on, **required**) plus `padding`, `seed`, `colors`, `theme`, `text`, `font`, `ticker`, `driven`. `setValue`/`setChecked` throw -- a skin reflects the primitive, it does not drive it.
 
-A skin is an ordinary recipe plus a descriptor -- `recipe.headless = { attrs, read(host, handle, state) }`. `skinHeadless` observes `attrs` and calls `read()` at **event time** (never per frame) to parse the painted state into preallocated slots. A painted attribute is truthy when present with any value but `"false"` (so both a boolean `data-disabled` and a value `data-checked="true"` work). The 11 skins live in a registry (`HEADLESS_SKINS` / `SKIN_META`) separate from the 57 recipes.
+A skin is an ordinary recipe plus a descriptor -- `recipe.headless = { attrs, read(host, handle, state) }`. `skinHeadless` observes `attrs` and calls `read()` at **event time** (never per frame) to parse the painted state into preallocated slots. A painted attribute is truthy when present with any value but `"false"` (so both a boolean `data-disabled` and a value `data-checked="true"` work). The 11 skins live in a registry (`HEADLESS_SKINS` / `SKIN_META`) separate from the 65 recipes.
 
 ```js
 import { skinHeadless, SwitchSkin } from '@zakkster/lite-ui-fx/headless';
@@ -273,7 +273,7 @@ The `state` object passed to `tick(ctx, dt, now, state)` every frame:
 | `index` / `count` / `hoverIndex` | `number` | group mode only: selection, item count, hovered item (-1 none) |
 | `labels` / `itemX` / `itemY` / `itemW` / `itemH` | `string[]` / `Float32Array` | group mode only: item labels + per-item geometry lanes (read by index) |
 
-`RECIPE_META` rows: `{ id, name, type, family, themeable, motionSafe }`. `themeable` is true for all 57; `motionSafe` is true for exactly the recipes that ship a calm reduced-motion path (6 today: SwarmToggle plus the five decorate recipes) and honestly false for the rest.
+`RECIPE_META` rows: `{ id, name, type, family, themeable, motionSafe }`. `themeable` is true for all 65; `motionSafe` is true for exactly the recipes that ship a calm reduced-motion path (14 today: SwarmToggle plus the five U4b decorate recipes and the eight E2 decorations) and honestly false for the rest.
 
 ---
 
@@ -353,13 +353,13 @@ Everything a recipe needs is resolved in `init` (cold): the palette and any ramp
 | Pointer move / drag | **0** | arithmetic only; the bounding rect is cached on pointer-enter, not read per move |
 | `init` / theme resolve | once, cold | palette, ramps, gradients, pools -- then read-only in the loop |
 
-The `t3-frame-alloc` torture tier asserts, per recipe, **zero distinct `fillStyle` string allocations per frame at steady state** and **zero gradient constructions after `init`** -- in both a default and a themed mount, across all 57 recipes (grouped controls included, driven through their selection). Two positive controls -- one allocating a color string per frame, one per group item per frame -- must FAIL the gate, or it would be decorative. The full harness (`@zakkster/lite-leak` + `@zakkster/lite-gc-profiler`) proves **0 retained bytes, 0 major GCs, and ~0.88 B/op** across the whole mount / interact / destroy loop under `--expose-gc`:
+The `t3-frame-alloc` torture tier asserts, per recipe, **zero distinct `fillStyle` string allocations per frame at steady state** and **zero gradient constructions after `init`** -- in both a default and a themed mount, across all 65 recipes (grouped controls included, driven through their selection). Two positive controls -- one allocating a color string per frame, one per group item per frame -- must FAIL the gate, or it would be decorative. The full harness (`@zakkster/lite-leak` + `@zakkster/lite-gc-profiler`) proves **0 retained bytes, 0 major GCs, and ~0.88 B/op** across the whole mount / interact / destroy loop under `--expose-gc`:
 
 ```
 GATE leak=size 0/0 findings=0 warnings=0 | gc major=0 minor=0 maxMs=0.00 | alloc=0.8759765625 B/op
 ```
 
-For size: the controller alone is **~7.1 KB min+gzip** (its three deps external); the full catalog of 57 recipes is **~25 KB min+gzip**, and it tree-shakes -- import one recipe and the bundler drops the other 56.
+For size: the controller alone is **~7.1 KB min+gzip** (its three deps external); the full catalog of 65 recipes is **~29 KB min+gzip**, and it tree-shakes -- import one recipe and the bundler drops the other 64.
 
 </details>
 
@@ -369,21 +369,22 @@ For size: the controller alone is **~7.1 KB min+gzip** (its three deps external)
 
 Each is an ADR under [`decisions/`](decisions/):
 
-- **[0001](decisions/0001-recipes-position.md) -- Recipes ship inside the package.** No more copy-paste-from-a-ZIP: 57 recipes are versioned, typed, and tree-shakeable behind the `./recipes` subpath, exactly the shape the sibling fx packages use.
-- **[0002](decisions/0002-recipe-options.md) -- One recipe option convention.** `{ colors, theme, text, font }` across all 57, resolved cold in `init`; defaults reproduce today's literals byte-for-byte; `text` closes the WCAG label-in-name gap.
+- **[0001](decisions/0001-recipes-position.md) -- Recipes ship inside the package.** No more copy-paste-from-a-ZIP: 65 recipes are versioned, typed, and tree-shakeable behind the `./recipes` subpath, exactly the shape the sibling fx packages use.
+- **[0002](decisions/0002-recipe-options.md) -- One recipe option convention.** `{ colors, theme, text, font }` across all 65, resolved cold in `init`; defaults reproduce today's literals byte-for-byte; `text` closes the WCAG label-in-name gap.
 - **[0003](decisions/0003-element-types.md) -- Real native element types.** CHECKBOX (tri-state), PROGRESS (`setValue`-driven, opt-in `aria-live`), KNOB (native arrows + pointer map) wrap the *correct* native element, not a faked toggle.
 - **[0004](decisions/0004-decorate-mode.md) -- Decorate mode.** A second mount mode for a canvas around a live element -- the honest home for a decoration over a real input, host byte-identical.
 - **[0005](decisions/0005-host-clock.md) -- Host clock, reduced motion, frame budget.** Three clock modes, `state.reducedMotion` as a flag the recipe reads, `state.budget` for graceful degradation -- all additive, default path byte-identical.
 - **[0006](decisions/0006-docs-and-demo.md) -- Blueprint docs + a demo that consumes the package.** This README on the blueprint spine, and one demo generated from `RECIPE_META` that imports only public exports (no more inline reimplementation).
 - **[0007](decisions/0007-group-contract.md) -- Grouped controls: one canvas, N native elements.** A third mount mode (`mountUIFXGroup`) for radio/tabs/stepper/rating; `onSelect` is a ninth, group-only hook and group state a superset of scalar state, so the single-element API is byte-identical (additive, 1.9.0).
-- **[0008](decisions/0008-headless-skins.md) -- Headless skins: paint a lite-headless primitive.** `skinHeadless` couples through the painted-attribute contract (one `MutationObserver`, parsed at event time), never an import -- so lite-headless is a compose-target, never a dependency. The four skins live in a registry separate from the 57 recipes (additive, 1.10.0).
+- **[0008](decisions/0008-headless-skins.md) -- Headless skins: paint a lite-headless primitive.** `skinHeadless` couples through the painted-attribute contract (one `MutationObserver`, parsed at event time), never an import -- so lite-headless is a compose-target, never a dependency. The four skins live in a registry separate from the recipe registry (additive, 1.10.0).
 - **[0009](decisions/0009-headless-skins-select.md) -- Headless skins II: the select + tri-state pack.** Adds seven bespoke skins (checkbox tri-state + checkbox-group master, select trigger, meter, steps, accordion, skeleton), all single-host and mapping onto the existing state slots (no state-shape change). `SelectSkin` resolves the `<select>`/dropdown decision toward a V4 skin of the trigger; the portaled listbox open-state is a recorded follow-on. No new dependency (additive, 1.11.0).
+- **[0010](decisions/0010-text-pointer-card-decorations.md) -- Text-fx + pointer + card decorations.** Eight decorate-mode recipes (text shimmer/spotlight/underline, card border-beam/tilt-shine/spotlight, pointer magnetic-pull/ripple) grow the main recipe registry to 65. Each is zero per-frame alloc (const colours + `globalAlpha`, no gradient), `motionSafe` with a real calm path, and structurally reflow-safe -- a recipe receives `ctx` + `state` + `pointer`, never a DOM handle, so it cannot read layout. No new dependency: particle trail/glow and a host-owned scramble defer to later phases (additive, 1.12.0).
 
 ---
 
 ## Testing
 
-**237 deterministic node:test cases across 27 suites, all pass**, plus a torture gate that proves 0 B/op steady state and leak-freedom.
+**299 deterministic node:test cases across 38 suites, all pass**, plus a torture gate that proves 0 B/op steady state and leak-freedom.
 
 ```bash
 npm test          # node:test: contract, boundary, registry, theming, reduced-motion, docs

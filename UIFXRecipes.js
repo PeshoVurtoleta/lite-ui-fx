@@ -3049,6 +3049,256 @@ export function SuccessBloom(o = {}) {
 }
 
 
+// ===========================================================
+//  E2 DECORATIONS -- text-fx, card, and pointer (decorate mode)
+// ===========================================================
+// Eight decorateUIFX recipes (RECIPE_META type 'decorate'): a canvas wrapped
+// AROUND a live element, never modifying it. A recipe receives only (ctx, dt,
+// now, state, pointer) -- never a DOM handle -- so it cannot read layout and is
+// structurally reflow-safe (the decorate adapter owns every DOM read). Each is
+// zero per-frame alloc (const colours + globalAlpha; NO gradient or string built
+// in tick) and ships a reduced-motion calm path (motionSafe). The text-fx paint
+// OVER the host's own live glyphs -- they never re-render the string. See
+// decisions/0010-text-pointer-card-decorations.md.
+
+/** Text Shimmer (E2 DECORATE) -- a soft light band sweeps across the host's text
+ *  left->right on a loop, painting OVER the live glyphs (never rendering them).
+ *  Reduced motion (U5): a faint static sheen, no sweep. */
+export function TextShimmer(o = {}) {
+    const P = resolveTheme(o, { accent: '#e2e8f0' });
+    let phase = 0;
+    return {
+        tick(c, dt, now, st) {
+            if (st.reducedMotion) {
+                c.fillStyle = P.accent; c.globalAlpha = 0.05;
+                c.fillRect(0, 0, st.w, st.h); c.globalAlpha = 1; return;
+            }
+            const BW = st.w * 0.26, slant = st.h * 0.4;
+            phase = (phase + dt * 0.55) % 1;
+            const cx = -BW + phase * (st.w + BW * 2);
+            c.fillStyle = P.accent;
+            for (let i = 0; i < 3; i++) {
+                const w = BW * (1 - i * 0.3);
+                c.globalAlpha = 0.09 - i * 0.025;
+                c.beginPath();
+                c.moveTo(cx - w + slant, 0); c.lineTo(cx + w + slant, 0);
+                c.lineTo(cx + w - slant, st.h); c.lineTo(cx - w - slant, st.h);
+                c.closePath(); c.fill();
+            }
+            c.globalAlpha = 1;
+        },
+    };
+}
+
+/** Spotlight Text (E2 DECORATE) -- a soft highlight tracks the pointer's x across
+ *  the text line while hovering, a reading light over the live glyphs. Reduced
+ *  motion (U5): a centred static highlight on hover, no follow. */
+export function SpotlightText(o = {}) {
+    const P = resolveTheme(o, { accent: '#fde68a' });
+    let on = 0, sx = -1;
+    return {
+        tick(c, dt, now, st, ptr) {
+            const target = st.hover ? 1 : 0;
+            on = st.reducedMotion ? target : lerp(on, target, dt * 8);
+            if (on < 0.01) return;
+            const tx = st.reducedMotion ? st.w / 2 : clamp(ptr.x, 0, st.w);
+            sx = (st.reducedMotion || sx < 0) ? tx : lerp(sx, tx, dt * 12);
+            const rx = st.w * 0.22, ry = st.h * 0.55, cy = st.h / 2;
+            c.fillStyle = P.accent;
+            for (let i = 3; i >= 1; i--) {
+                c.globalAlpha = on * 0.05 * i;
+                c.beginPath(); c.ellipse(sx, cy, rx * (i / 3), ry * (i / 3), 0, 0, PI2); c.fill();
+            }
+            c.globalAlpha = 1;
+        },
+    };
+}
+
+/** Underline Draw (E2 DECORATE) -- a gradient-free underline wipes in left->right
+ *  when the host gains focus and retracts on blur, with a soft leading dot.
+ *  Distinct from TypewriterField (which grows with typed length). Reduced motion
+ *  (U5): the underline snaps to full-width on focus, no wipe, no dot. */
+export function UnderlineDraw(o = {}) {
+    const P = resolveTheme(o, { accent: '#38bdf8' });
+    let draw = 0;
+    return {
+        tick(c, dt, now, st) {
+            const target = st.focused ? 1 : 0;
+            draw = st.reducedMotion ? target : lerp(draw, target, dt * 9);
+            const y = st.h - 3, x0 = 2, full = st.w - 4;
+            c.strokeStyle = P.accent; c.lineWidth = 2;
+            c.globalAlpha = 0.15; c.beginPath(); c.moveTo(x0, y); c.lineTo(x0 + full, y); c.stroke();
+            if (draw > 0.01) {
+                const x1 = x0 + full * draw;
+                c.globalAlpha = 1; c.beginPath(); c.moveTo(x0, y); c.lineTo(x1, y); c.stroke();
+                if (!st.reducedMotion && draw < 0.995) {
+                    c.fillStyle = P.accent;
+                    c.beginPath(); c.arc(x1, y, 2.5, 0, PI2); c.fill();
+                }
+            }
+            c.globalAlpha = 1;
+        },
+    };
+}
+
+/** Border Beam (E2 DECORATE) -- a bright comet travels around the host's border
+ *  over a faint full outline (Magic UI style). Reduced motion (U5): the static
+ *  faint outline only, no travelling beam. */
+export function BorderBeam(o = {}) {
+    const P = resolveTheme(o, { accent: '#a78bfa' });
+    const R = 10;
+    let t = 0;
+    return {
+        tick(c, dt, now, st) {
+            c.strokeStyle = P.accent; c.globalAlpha = 0.14; c.lineWidth = 1.5;
+            rr(c, 0, 0, st.w, st.h, R); c.stroke();
+            c.globalAlpha = 1;
+            if (st.reducedMotion) return;
+            t = (t + dt * 0.4) % 1;
+            const per = 2 * (st.w + st.h), head = t * per;
+            c.fillStyle = P.accent;
+            for (let i = 0; i < 6; i++) {
+                let d = head - i * (per * 0.012); if (d < 0) d += per;
+                let x, y;
+                if (d < st.w) { x = d; y = 0; }
+                else if (d < st.w + st.h) { x = st.w; y = d - st.w; }
+                else if (d < 2 * st.w + st.h) { x = st.w - (d - st.w - st.h); y = st.h; }
+                else { x = 0; y = st.h - (d - 2 * st.w - st.h); }
+                c.globalAlpha = 0.6 * (1 - i / 6);
+                c.beginPath(); c.arc(x, y, 2.2, 0, PI2); c.fill();
+            }
+            c.globalAlpha = 1;
+        },
+    };
+}
+
+/** Tilt Shine (E2 DECORATE) -- a diagonal sheen sweeps across the card toward the
+ *  pointer while hovering, with the border catching a little light. Clipped to
+ *  the card. Reduced motion (U5): a static centred sheen on hover, no follow. */
+export function TiltShine(o = {}) {
+    const P = resolveTheme(o, { accent: '#ffffff' });
+    const R = 10;
+    let on = 0, sx = 0.5;
+    return {
+        tick(c, dt, now, st, ptr) {
+            const target = st.hover ? 1 : 0;
+            on = st.reducedMotion ? target : lerp(on, target, dt * 8);
+            if (on < 0.01) return;
+            const nx = st.reducedMotion ? 0.5 : clamp(ptr.x / st.w, 0, 1);
+            sx = st.reducedMotion ? nx : lerp(sx, nx, dt * 10);
+            c.save();
+            rr(c, 0, 0, st.w, st.h, R); c.clip();
+            const bx = sx * st.w, bw = st.w * 0.5, slant = st.h * 0.6;
+            c.fillStyle = P.accent;
+            for (let i = 0; i < 3; i++) {
+                const w = bw * (1 - i * 0.3);
+                c.globalAlpha = on * (0.10 - i * 0.03);
+                c.beginPath();
+                c.moveTo(bx - w + slant, 0); c.lineTo(bx + w + slant, 0);
+                c.lineTo(bx + w - slant, st.h); c.lineTo(bx - w - slant, st.h);
+                c.closePath(); c.fill();
+            }
+            c.restore();
+            c.globalAlpha = on * 0.4; c.strokeStyle = P.accent; c.lineWidth = 1.5;
+            rr(c, 0, 0, st.w, st.h, R); c.stroke();
+            c.globalAlpha = 1;
+        },
+    };
+}
+
+/** Card Spotlight (E2 DECORATE) -- a soft radial glow follows the pointer over the
+ *  card surface with the border brightening (Aceternity style). Clipped to the
+ *  card. Reduced motion (U5): a static centred glow on hover, no follow. */
+export function CardSpotlight(o = {}) {
+    const P = resolveTheme(o, { accent: '#38bdf8' });
+    const R = 10;
+    let on = 0, gx = 0, gy = 0, seeded = 0;
+    return {
+        tick(c, dt, now, st, ptr) {
+            const target = st.hover ? 1 : 0;
+            on = st.reducedMotion ? target : lerp(on, target, dt * 7);
+            const tx = st.reducedMotion ? st.w / 2 : clamp(ptr.x, 0, st.w);
+            const ty = st.reducedMotion ? st.h / 2 : clamp(ptr.y, 0, st.h);
+            if (!seeded) { gx = tx; gy = ty; seeded = 1; }
+            else { gx = st.reducedMotion ? tx : lerp(gx, tx, dt * 12); gy = st.reducedMotion ? ty : lerp(gy, ty, dt * 12); }
+            if (on < 0.01) return;
+            c.save();
+            rr(c, 0, 0, st.w, st.h, R); c.clip();
+            const rad = Math.min(st.w, st.h) * 0.9;
+            c.fillStyle = P.accent;
+            for (let i = 5; i >= 1; i--) {
+                c.globalAlpha = on * 0.03 * (6 - i);
+                c.beginPath(); c.arc(gx, gy, rad * (i / 5), 0, PI2); c.fill();
+            }
+            c.restore();
+            c.globalAlpha = on * 0.35; c.strokeStyle = P.accent; c.lineWidth = 1.5;
+            rr(c, 0, 0, st.w, st.h, R); c.stroke();
+            c.globalAlpha = 1;
+        },
+    };
+}
+
+/** Magnetic Pull (E2 DECORATE) -- an accent ring is drawn pulled toward the
+ *  pointer within a radius while hovering; the host itself never moves (a
+ *  decoration reflects, it does not drive). Reduced motion (U5): a centred static
+ *  ring on hover, no pull. */
+export function MagneticPull(o = {}) {
+    const { maxPull = 14 } = o;
+    const P = resolveTheme(o, { accent: '#f472b6' });
+    const R = 10;
+    let bx = 0, by = 0, on = 0;
+    return {
+        tick(c, dt, now, st, ptr) {
+            const target = st.hover ? 1 : 0;
+            on = st.reducedMotion ? target : lerp(on, target, dt * 8);
+            const tx = (st.hover && !st.reducedMotion) ? clamp(ptr.x - st.w / 2, -maxPull, maxPull) : 0;
+            const ty = (st.hover && !st.reducedMotion) ? clamp(ptr.y - st.h / 2, -maxPull, maxPull) : 0;
+            bx = st.reducedMotion ? 0 : lerp(bx, tx, dt * 10);
+            by = st.reducedMotion ? 0 : lerp(by, ty, dt * 10);
+            if (on < 0.01) return;
+            c.save(); c.translate(bx, by);
+            c.strokeStyle = P.accent; c.lineWidth = 1.5; c.globalAlpha = on * 0.9;
+            rr(c, 1, 1, st.w - 2, st.h - 2, R); c.stroke();
+            c.globalAlpha = on * 0.18;
+            rr(c, -3, -3, st.w + 6, st.h + 6, R + 3); c.stroke();
+            c.restore();
+            c.globalAlpha = 1;
+        },
+    };
+}
+
+/** Pointer Ripple (E2 DECORATE) -- concentric rings expand from each pointer press
+ *  on the host, fading as they grow (Material style). Zero-alloc: a fixed
+ *  Float32Array ring pool preallocated in the factory. Reduced motion (U5): a
+ *  brief static ring at the press, no expansion. */
+export function PointerRipple(o = {}) {
+    const P = resolveTheme(o, { accent: '#22d3ee' });
+    const N = 6;
+    const rx = new Float32Array(N), ry = new Float32Array(N), ra = new Float32Array(N);
+    let head = 0;
+    function spawn(x, y) {
+        rx[head] = x; ry[head] = y; ra[head] = 1;
+        head = (head + 1) % N;
+    }
+    return {
+        onClick(x, y) { spawn(x, y); },
+        tick(c, dt, now, st) {
+            c.strokeStyle = P.accent; c.lineWidth = 2;
+            const maxR = Math.max(st.w, st.h) * 0.8;
+            for (let i = 0; i < N; i++) {
+                if (ra[i] <= 0) continue;
+                ra[i] -= dt * (st.reducedMotion ? 3 : 1.4);
+                if (ra[i] <= 0) { ra[i] = 0; continue; }
+                const grow = st.reducedMotion ? 0.2 : (1 - ra[i]);
+                c.globalAlpha = ra[i] * 0.7;
+                c.beginPath(); c.arc(rx[i], ry[i], 4 + grow * maxR, 0, PI2); c.stroke();
+            }
+            c.globalAlpha = 1;
+        },
+    };
+}
+
+
 // U4a additions -- new native element types (CHECKBOX, PROGRESS). Kept out of the
 // Vol.1-3 historical snapshots above so those stay accurate; all recipes remain
 // reachable via RECIPES / RECIPE_META and their named exports regardless.
@@ -3205,6 +3455,14 @@ export const RECIPES = Object.assign(Object.create(null), {
     focusHalo: FocusHalo,
     errorShake: ErrorShake,
     successBloom: SuccessBloom,
+    textShimmer: TextShimmer,
+    spotlightText: SpotlightText,
+    underlineDraw: UnderlineDraw,
+    borderBeam: BorderBeam,
+    tiltShine: TiltShine,
+    cardSpotlight: CardSpotlight,
+    magneticPull: MagneticPull,
+    pointerRipple: PointerRipple,
 });
 
 /**
@@ -3277,6 +3535,14 @@ export const RECIPE_META = [
     { id: 'focusHalo', name: 'Focus Halo', type: 'decorate', family: 'Form', themeable: true, motionSafe: true },
     { id: 'errorShake', name: 'Error Shake', type: 'decorate', family: 'Form', themeable: true, motionSafe: true },
     { id: 'successBloom', name: 'Success Bloom', type: 'decorate', family: 'Form', themeable: true, motionSafe: true },
+    { id: 'textShimmer', name: 'Text Shimmer', type: 'decorate', family: 'Text', themeable: true, motionSafe: true },
+    { id: 'spotlightText', name: 'Spotlight Text', type: 'decorate', family: 'Text', themeable: true, motionSafe: true },
+    { id: 'underlineDraw', name: 'Underline Draw', type: 'decorate', family: 'Text', themeable: true, motionSafe: true },
+    { id: 'borderBeam', name: 'Border Beam', type: 'decorate', family: 'Card', themeable: true, motionSafe: true },
+    { id: 'tiltShine', name: 'Tilt Shine', type: 'decorate', family: 'Card', themeable: true, motionSafe: true },
+    { id: 'cardSpotlight', name: 'Card Spotlight', type: 'decorate', family: 'Card', themeable: true, motionSafe: true },
+    { id: 'magneticPull', name: 'Magnetic Pull', type: 'decorate', family: 'Pointer', themeable: true, motionSafe: true },
+    { id: 'pointerRipple', name: 'Pointer Ripple', type: 'decorate', family: 'Pointer', themeable: true, motionSafe: true },
 ];
 
 /** Names of every built-in recipe (the keys of RECIPES at load time). */

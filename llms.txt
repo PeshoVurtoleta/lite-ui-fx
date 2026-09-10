@@ -1,7 +1,7 @@
 # @zakkster/lite-ui-fx
-> Canvas-hijacked UI components with pluggable recipe system. 57 built-in recipes.
+> Canvas-hijacked UI components with pluggable recipe system. 65 built-in recipes.
 
-VERSION 1.11.0
+VERSION 1.12.0
 
 ## Install
 npm i @zakkster/lite-ui-fx
@@ -14,11 +14,12 @@ Recipe = { tick(), init?(), onHover?(), onClick?(), onToggle?(), onDrag?(), dest
 ## Import -- Controller
 import { mountUIFX, decorateUIFX, mountUIFXGroup, UIType, GroupType } from '@zakkster/lite-ui-fx';
 
-## Import -- Recipes (one ./recipes subpath, 57 total, tree-shakeable)
+## Import -- Recipes (one ./recipes subpath, 65 total, tree-shakeable)
 import { SwarmToggle, MagneticButton, SparkSlider } from '@zakkster/lite-ui-fx/recipes';
 import { PendulumToggle, HeartbeatButton, AuroraSlider } from '@zakkster/lite-ui-fx/recipes';
 import { VolumeKnob, WaterLevel, TimerCountdown } from '@zakkster/lite-ui-fx/recipes';
 import { PillTabs, SegmentedSlide, RadioOrbit, BubbleRating } from '@zakkster/lite-ui-fx/recipes'; // U7 group recipes
+import { TextShimmer, SpotlightText, BorderBeam, CardSpotlight, MagneticPull, PointerRipple } from '@zakkster/lite-ui-fx/recipes'; // E2 decorations
 
 ## Import -- Recipe registry (data-driven pickers)
 import { RECIPES, RECIPE_META, RECIPE_NAMES, registerRecipe, mountRecipe } from '@zakkster/lite-ui-fx/recipes';
@@ -109,7 +110,7 @@ skin.destroy()   // remove overlay + observer + listeners; host + handle untouch
 //   EVENT time (never per frame) to parse painted state into preallocated slots.
 // options: { host(REQUIRED), padding, seed, colors, theme, text, font, ticker, driven };
 //   hijack-only keys throw. setValue/setChecked throw (a skin reflects the primitive).
-// Skins (SKIN_META, a registry SEPARATE from RECIPES -- the 57-recipe count is
+// Skins (SKIN_META, a registry SEPARATE from RECIPES -- the recipe count is
 //   unchanged). E1: SwitchSkin (data-checked/aria-checked), SliderSkin (aria-
 //   valuenow/min/max + data-dragging), ProgressSkin (aria-valuenow/max + data-
 //   complete/data-loading), RatingSkin (aria-valuenow/max over N). E1b (0009):
@@ -165,7 +166,7 @@ GroupType.RATING  -> radiogroup of N radios (rating semantics); native roving
 //   itemX/itemY/itemW/itemH (Float32Array per-item geometry lanes, read by index).
 //   The scalar value fields (val/toggled/indeterminate) are neutral for a group.
 
-## 57 Built-in Recipes
+## 65 Built-in Recipes
 
 ### Vol. 1 -- 10 recipes
 Toggles: SwarmToggle, LiquidToggle, NeonPulseToggle
@@ -208,6 +209,21 @@ Rating (GroupType.RATING): BubbleRating
 // fakes to real group types, so their native arrow-key selection is now correct;
 // SegmentedSlide is new. Selection is state.index; onSelect(index, state) fires once.
 
+### E2 -- text-fx + pointer + card decorations (decorateUIFX: a canvas AROUND a live element)
+Text (paint OVER live text): TextShimmer, SpotlightText, UnderlineDraw
+Card: BorderBeam, TiltShine, CardSpotlight
+Pointer: MagneticPull, PointerRipple
+// All type 'decorate' (RECIPE_META), motionSafe (a reduced-motion calm path), zero
+// per-frame alloc. They paint OVER a live element and never modify it; a recipe
+// receives only (ctx, dt, now, state, pointer) -- never a DOM handle -- so it cannot
+// read layout and is structurally reflow-safe (the decorate adapter owns every DOM
+// read). No lite-particles/lite-noise: shimmer/glow/beam are const colours +
+// globalAlpha, no gradient built in tick. Text-fx cover <input> AND <textarea>;
+// card/pointer decorate any live element. DEFERRED (decisions/0010): pointer trail +
+// proximity-glow (need lite-particles -> the 1.13.0 phase); ScrambleIn (needs
+// host-owned text -> a future hijack-mode text tranche); Dock magnify (a multi-
+// element row -> a future group/dock vehicle). See 0010.
+
 ## Writing Custom Recipes
 See UIFX-RECIPE-GUIDE.md (included in package).
 
@@ -223,9 +239,9 @@ See UIFX-RECIPE-GUIDE.md (included in package).
 - Zero-GC in all built-in recipes: const colors + globalAlpha, precomputed
   color/label LUTs, fixed preallocated particle pools, gradients built in init.
   Gated per recipe by the t3-frame-alloc torture tier (default AND themed mount).
-- Themeable: all 57 recipes honour { colors, theme:{light,mid,dark}, text, font },
+- Themeable: all 65 recipes honour { colors, theme:{light,mid,dark}, text, font },
   resolved once in init (zero per-frame alloc). RECIPE_META.themeable is true for
-  all 57. A bare mount is byte-identical to pre-theming. Shipped palettes + APCA
+  all 65. A bare mount is byte-identical to pre-theming. Shipped palettes + APCA
   contrast are authored with @zakkster/lite-hueforge (a dev-only tool, never a
   runtime dependency).
 - U5 host clock: mount { ticker } to ride a caller-supplied lite-ticker (destroy
@@ -234,7 +250,8 @@ See UIFX-RECIPE-GUIDE.md (included in package).
 - U5 reduced motion: state.reducedMotion (matchMedia, watched) makes calm-path
   recipes render statically -- ErrorShake stops shaking, SwarmToggle/SuccessBloom/
   FocusHalo drop their motion. RECIPE_META.motionSafe is true for EXACTLY the
-  recipes that ship a calm path (SwarmToggle + the 5 decorate recipes today; the
+  recipes that ship a calm path (SwarmToggle + the 5 U4b decorate recipes + the 8 E2
+  decorations = 14 today; the
   rest honestly false until each lands one). mountRecipe warns (not throws) mounting
   a motionSafe:false recipe under active reduce. state.budget (0..1) lets budget-aware
   recipes shed work before frames drop.
@@ -259,7 +276,7 @@ See UIFX-RECIPE-GUIDE.md (included in package).
   attributes (one MutationObserver; parsed at event time, never per frame) --
   lite-ui-fx paints, lite-headless behaves. lite-headless is a compose-target, NEVER
   a dependency (the package imports it nowhere). 11 skins live in a registry
-  (HEADLESS_SKINS/SKIN_META) SEPARATE from the 57 recipes: E1 switch/slider/progress/
+  (HEADLESS_SKINS/SKIN_META) SEPARATE from the 65 recipes: E1 switch/slider/progress/
   rating; E1b (decisions/0009) checkbox (tri-state) + checkbox-group master, select
   (the trigger -- resolving the dropdown/item-6 decision toward a V4 skin; the
   portaled listbox open-state is a follow-on), meter, steps, accordion, skeleton --

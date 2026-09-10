@@ -27,9 +27,9 @@ describe('recipe registry + metadata', () => {
         assert.equal(RECIPES['constructor'], undefined);
     });
 
-    it('RECIPE_NAMES is frozen and has 57 entries at load', () => {
+    it('RECIPE_NAMES is frozen and has 65 entries at load', () => {
         assert.equal(Object.isFrozen(RECIPE_NAMES), true);
-        assert.equal(RECIPE_NAMES.length, 57);
+        assert.equal(RECIPE_NAMES.length, 65);
     });
 
     it('every meta row resolves to a factory (bijection at load)', () => {

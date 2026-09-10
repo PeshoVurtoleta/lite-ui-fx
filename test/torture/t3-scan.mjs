@@ -82,10 +82,16 @@ function makeChurn(type) {
             // focus is swept above (FocusHalo). Cycle the host text through the
             // prebuilt strings (no alloc) so PasswordStrength rescans + Typewriter-
             // Field grows, and flip validity to drive the ErrorShake/SuccessBloom
-            // false<->true edges. A decoration fires NO onToggle/onDrag (it has no
-            // native control -- decisions/0004), so none is called here.
+            // false<->true edges.
             st.text = TEXTS[(i >> 3) % TEXTS.length];
             st.valid = (i & 63) < 40;
+            // E2: sweep the pointer across the host box and fire the click hook so
+            // the pointer-driven decorations (spotlight/tilt/magnetic/ripple) run
+            // their full draw path -- and a click-spawned ripple pool is inside the
+            // alloc window. Arithmetic only: the driver still allocates nothing.
+            ptr.x = 8 + ((i * 7) % 140);
+            ptr.y = 4 + ((i * 3) % 40);
+            if ((i & 15) === 0 && recipe.onClick) recipe.onClick(ptr.x, ptr.y, st);
         } else { // button
             if ((i & 11) === 0) { st.active = true; if (recipe.onClick) recipe.onClick(ptr.x, ptr.y, st); }
             else if ((i & 11) === 6) { st.active = false; }

@@ -63,17 +63,22 @@ const has = (set, needle) => {
 const THEME = { theme: { light: '#ff00aa', mid: '#00ffaa', dark: '#0a0a12' } };
 
 describe('U3b theming -- RECIPE_META flags', () => {
-    it('themeable is true for all 57 recipes', () => {
+    it('themeable is true for all 65 recipes', () => {
         for (const m of RECIPE_META) assert.equal(m.themeable, true, m.id + ' should be themeable');
     });
     it('motionSafe is true for EXACTLY the U5 calm-path recipes, false otherwise', () => {
         // U5 (decisions/0005): motionSafe is true for exactly the recipes that
         // ship a reduced-motion calm path -- SwarmToggle (reference) + the five
-        // decorate recipes. Every other recipe stays honestly false until it lands
-        // its own calm path. This gate is what keeps motionSafe from lying.
+        // U4b decorate recipes + the eight E2 decorations (decisions/0010), each of
+        // which renders statically under reduce. Every other recipe stays honestly
+        // false until it lands its own calm path. This gate keeps motionSafe honest.
         const SAFE = new Set([
             'swarmToggle', 'passwordStrength', 'typewriterField',
             'focusHalo', 'errorShake', 'successBloom',
+            // E2 decorations (decisions/0010): all ship a reduced-motion calm path.
+            'textShimmer', 'spotlightText', 'underlineDraw',
+            'borderBeam', 'tiltShine', 'cardSpotlight',
+            'magneticPull', 'pointerRipple',
         ]);
         for (const m of RECIPE_META) {
             assert.equal(m.motionSafe, SAFE.has(m.id), m.id + ' motionSafe');

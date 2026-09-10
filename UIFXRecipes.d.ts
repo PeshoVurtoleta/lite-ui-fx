@@ -134,6 +134,15 @@ export declare function PullRefresh(options?: RecipeOptions): UIFXRecipe;
 export declare function FocusHalo(options?: RecipeOptions): UIFXRecipe;
 export declare function ErrorShake(options?: RecipeOptions): UIFXRecipe;
 export declare function SuccessBloom(options?: RecipeOptions): UIFXRecipe;
+// E2 decorations (text-fx + card + pointer; decisions/0010)
+export declare function TextShimmer(options?: RecipeOptions): UIFXRecipe;
+export declare function SpotlightText(options?: RecipeOptions): UIFXRecipe;
+export declare function UnderlineDraw(options?: RecipeOptions): UIFXRecipe;
+export declare function BorderBeam(options?: RecipeOptions): UIFXRecipe;
+export declare function TiltShine(options?: RecipeOptions): UIFXRecipe;
+export declare function CardSpotlight(options?: RecipeOptions): UIFXRecipe;
+export declare function MagneticPull(options?: RecipeOptions & { maxPull?: number }): UIFXRecipe;
+export declare function PointerRipple(options?: RecipeOptions): UIFXRecipe;
 
 // ===========================================================
 //  BARREL OBJECTS (back-compat)
@@ -334,6 +343,14 @@ declare const UIFXAllRecipes: {
     FocusHalo: typeof FocusHalo;
     ErrorShake: typeof ErrorShake;
     SuccessBloom: typeof SuccessBloom;
+    TextShimmer: typeof TextShimmer;
+    SpotlightText: typeof SpotlightText;
+    UnderlineDraw: typeof UnderlineDraw;
+    BorderBeam: typeof BorderBeam;
+    TiltShine: typeof TiltShine;
+    CardSpotlight: typeof CardSpotlight;
+    MagneticPull: typeof MagneticPull;
+    PointerRipple: typeof PointerRipple;
 };
 export default UIFXAllRecipes;
 
@@ -341,7 +358,7 @@ export default UIFXAllRecipes;
 //  HEADLESS SKINS (E1, decisions/0008)
 //  A sibling registry of RECIPES/RECIPE_META: skins are driven by skinHeadless
 //  (a handle + host), never by mountRecipe (a container), so they are kept
-//  separate and the 57-recipe count is unchanged.
+//  separate and the recipe count is unchanged by skins.
 // ===========================================================
 
 export declare function SwitchSkin(options?: RecipeOptions): HeadlessSkinRecipe;

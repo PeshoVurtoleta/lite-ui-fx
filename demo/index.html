@@ -164,6 +164,26 @@ section > h2 {
     font: inherit;
 }
 
+/* E2 card/pointer decorations decorate a visible card (a div, or a button for the
+   pointer family) instead of an input, so the surface effects have room to read. */
+.card .host .deco-card {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 9rem;
+    height: 3.4rem;
+    padding: 0.5rem 0.7rem;
+    background: #0d0f14;
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 0.6rem;
+    font: inherit;
+    font-size: 0.72rem;
+    text-align: center;
+    cursor: default;
+}
+.card .host button.deco-card { cursor: pointer; }
+
 .card .name { font-size: 0.8rem; color: var(--text); text-align: center; }
 
 .card .meta {
@@ -195,7 +215,7 @@ section > h2 {
 <body>
 
 <header>
-    <h1>lite-ui-fx <small>56 recipes, generated from RECIPE_META, importing only public exports</small></h1>
+    <h1>lite-ui-fx <small>65 recipes, generated from RECIPE_META, importing only public exports</small></h1>
     <div class="controls">
         <span id="profile-flag">#profile: reflow gate armed</span>
         <label>Theme
@@ -239,7 +259,7 @@ const THEMES = {
 const FAMILY_ORDER = [
     'Toggles', 'Buttons', 'Sliders', 'Knobs', 'Progress', 'Checkboxes',
     'Loaders', 'Counters', 'Rating', 'Controls', 'Indicators', 'Mood',
-    'Feedback', 'Fun', 'Form',
+    'Feedback', 'Fun', 'Form', 'Text', 'Card', 'Pointer',
 ];
 
 // --- per-recipe canvas geometry (the element box; the canvas adds PAD each side).
@@ -281,6 +301,9 @@ const DECOR_INPUT = {
     focusHalo: { type: 'text', value: '', ph: 'focus me' },
     errorShake: { type: 'text', value: 'check', ph: 'validation' },
     successBloom: { type: 'text', value: 'ok', ph: 'validation' },
+    textShimmer: { type: 'text', value: 'Shimmer', ph: '' },
+    spotlightText: { type: 'text', value: 'Spotlight follows cursor', ph: '' },
+    underlineDraw: { type: 'text', value: '', ph: 'focus to draw' },
 };
 
 let mounted = [];        // live instances, so a reduced-motion toggle can reach them
@@ -293,17 +316,27 @@ function mountOne(meta, host, theme) {
     const base = theme ? { theme } : {};
     base.padding = PAD;
     if (meta.type === 'decorate') {
-        // Decorate mode wants a real, visible host element. Build one input and
-        // let decorateUIFX wrap a canvas around it -- the host stays byte-identical.
-        const cfg = DECOR_INPUT[meta.id] || { type: 'text', value: 'hello', ph: '' };
-        const input = document.createElement('input');
-        input.type = cfg.type;
-        input.value = cfg.value;
-        input.placeholder = cfg.ph;
-        input.setAttribute('aria-label', meta.name);
-        host.appendChild(input);
-        const inst = decorateUIFX(input, RECIPES[meta.id], base);
-        decorInsts.push({ id: meta.id, inst, input });
+        // Decorate mode wants a real, visible host element; decorateUIFX wraps a
+        // canvas around it and the host stays byte-identical. Text-fx + form
+        // feedback decorate a usable <input>; the E2 card/pointer families decorate
+        // a visible card (a <div>, or a <button> for the pointer family).
+        let hostEl;
+        if (meta.family === 'Card' || meta.family === 'Pointer') {
+            hostEl = document.createElement(meta.family === 'Pointer' ? 'button' : 'div');
+            if (meta.family === 'Pointer') hostEl.type = 'button';
+            hostEl.className = 'deco-card';
+            hostEl.textContent = meta.name;
+        } else {
+            const cfg = DECOR_INPUT[meta.id] || { type: 'text', value: 'lite-ui-fx', ph: 'type here' };
+            hostEl = document.createElement('input');
+            hostEl.type = cfg.type;
+            hostEl.value = cfg.value;
+            hostEl.placeholder = cfg.ph;
+        }
+        hostEl.setAttribute('aria-label', meta.name);
+        host.appendChild(hostEl);
+        const inst = decorateUIFX(hostEl, RECIPES[meta.id], base);
+        decorInsts.push({ id: meta.id, inst, input: hostEl });
         return inst;
     }
     if (GROUP_TYPES.has(meta.type)) {

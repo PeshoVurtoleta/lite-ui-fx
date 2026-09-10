@@ -5,6 +5,50 @@ All notable changes to `@zakkster/lite-ui-fx` are documented here.
 The format follows Keep a Changelog; this project adheres to Semantic
 Versioning.
 
+## [1.12.0] -- 2026-09-08
+
+Enrichment session E2 (decisions/0010): eight bespoke decorations on the U4b decorate
+mode -- text-fx, card, and pointer micro-interactions painted AROUND a live element.
+The first session since U4b to grow the MAIN recipe registry; no new dependency.
+
+### Added
+
+- Eight `decorateUIFX` recipes on the `./recipes` subpath (RECIPE_META type
+  `decorate`), growing `RECIPE_NAMES` 57 -> 65 across three new families. Each is
+  themeable, `motionSafe` (a reduced-motion calm path), and allocates zero bytes per
+  frame, gated by the t3 torture tier (now gating 65 recipes, default AND themed):
+  - Text, painted OVER the host's own live glyphs: `TextShimmer` (a swept light band),
+    `SpotlightText` (a pointer-follow reading highlight), `UnderlineDraw` (a
+    focus-triggered underline wipe, distinct from TypewriterField).
+  - Card: `BorderBeam` (a comet around the perimeter), `TiltShine` (a pointer-driven
+    sheen), `CardSpotlight` (a pointer-follow radial glow).
+  - Pointer: `MagneticPull` (an accent ring eased toward the pointer; the host never
+    moves), `PointerRipple` (expanding rings from each press, a fixed Float32Array pool).
+  A recipe receives only `(ctx, dt, now, state, pointer)` -- never a DOM handle -- so a
+  decoration cannot read layout and is structurally reflow-safe. Shimmer/glow/beam use
+  const colours + `globalAlpha` with no gradient built in tick; no dependency was added
+  (`package.json` deps stay `lite-lerp` / `lite-random` / `lite-ticker`).
+- `test/decorations-e2.test.mjs`: registry shape, additive-diff + exact-restore over
+  `<input>` / `<div>` / `<button>` hosts, and reduced-motion calm-path divergence. The
+  t3 decorate churn now sweeps the pointer and fires the click hook so the pointer
+  decorations' full draw paths are inside the alloc window.
+
+### Changed
+
+- `llms.txt` and `README.md`: the recipe catalog + counts move 57 -> 65 (new families
+  Text, Card, Pointer), the `motionSafe` roster 6 -> 14, and the catalog size figure is
+  re-measured (~29 KB min+gzip). `demo/index.html` auto-generates the eight scenes from
+  RECIPE_META (the card/pointer families decorate a visible card host). Documentation
+  and demo only; no shipped code path changed.
+
+### Fixed
+
+none
+
+### Removed
+
+none
+
 ## [1.11.0] -- 2026-09-08
 
 Enrichment session E1b (decisions/0009): seven bespoke headless skins continuing the

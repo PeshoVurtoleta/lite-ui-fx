@@ -165,7 +165,7 @@ export async function runT0() {
     const metaStyleDelta = headChildCount() - metaHeadBefore;
     assert.equal(metaStyleDelta, 0, 'meta batch nets ZERO into document.head');
     assert.equal(mounted, RECIPE_META.length, 'every RECIPE_META row mounted');
-    assert.equal(mounted, 57, 'all 57 recipes exercised');
+    assert.equal(mounted, 65, 'all 65 recipes exercised');
 
     return { styleDelta, mounted };
 }

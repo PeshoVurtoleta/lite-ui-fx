@@ -196,7 +196,7 @@ export async function runT1() {
         swept++;
     }
     assert.equal(swept, RECIPE_META.length, 'every RECIPE_META row swept');
-    assert.equal(swept, 57, 'all 57 recipes swept through degenerate inputs');
+    assert.equal(swept, 65, 'all 65 recipes swept through degenerate inputs');
     assert.equal(raf.pending(), 0, 't1 degenerate sweep leaves raf pending at 0');
 
     return { swept };
